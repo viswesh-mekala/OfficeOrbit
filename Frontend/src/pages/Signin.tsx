@@ -10,7 +10,7 @@ import { Button } from '../components/common/Button';
 
 const { width } = Dimensions.get('window');
 
-export const Login: React.FC = () => {
+export const Signin: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -20,7 +20,7 @@ export const Login: React.FC = () => {
         setIsSubmitting(true);
         // Small delay for button feel, then navigate
         setTimeout(() => {
-            router.replace('/home');
+            router.replace('/dashboard');
         }, 500);
     };
 

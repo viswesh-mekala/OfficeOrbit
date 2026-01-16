@@ -96,7 +96,7 @@ const OrbitalHero = () => {
                     variant="primary"
                     style={{ width: 200, marginBottom: 16 }}
                 />
-                <TouchableOpacity onPress={() => router.push('/login')}>
+                <TouchableOpacity onPress={() => router.push('/signin')}>
                     <Text style={styles.signInText}>
                         Already have an account? <Text style={styles.signInLink}>Sign In</Text>
                     </Text>

@@ -22,12 +22,12 @@ export const Signup: React.FC = () => {
         // Small delay for button feel, then navigate
         setTimeout(() => {
             // TODO: Integrate actual signup logic here
-            router.replace('/home');
+            router.replace('/dashboard');
         }, 500);
     };
 
     const navigateToLogin = () => {
-        router.push('/login');
+        router.push('/signin');
     };
 
     return (

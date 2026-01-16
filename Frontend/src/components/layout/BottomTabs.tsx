@@ -8,13 +8,13 @@ export const BottomTabs: React.FC = () => {
     const pathname = usePathname();
 
     // Simple state checking for active tab based on pathname
-    // Note: pathname might be /home, /schedule, etc.
+    // Note: pathname might be /dashboard, /attendance, etc.
 
     const tabs = [
-        { name: 'Home', icon: 'grid', route: '/home' },
-        { name: 'Schedule', icon: 'calendar', route: '/attendance' }, // Mapping attendance to schedule
-        { name: 'Team', icon: 'people', route: '/reports' }, // Mapping reports to team for demo
-        { name: 'Settings', icon: 'settings', route: '/profile' },
+        { name: 'Dashboard', icon: 'grid', route: '/dashboard' },
+        { name: 'Attendance ', icon: 'calendar', route: '/attendance' }, // Mapping attendance to schedule
+        { name: 'Team', icon: 'people', route: '/team' }, // Mapping reports to team for demo
+        { name: 'Profile', icon: 'person', route: '/profile' },
     ];
 
     return (

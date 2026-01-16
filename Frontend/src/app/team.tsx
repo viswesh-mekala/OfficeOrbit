@@ -3,11 +3,11 @@ import { View, Text, StyleSheet } from 'react-native';
 import { MainLayout } from '../components/layout/MainLayout';
 import { theme } from '../theme/theme';
 
-export default function Reports() {
+export default function Team() {
     return (
         <MainLayout>
             <View style={styles.container}>
-                <Text style={styles.title}>Reports</Text>
+                <Text style={styles.title}>Team</Text>
             </View>
         </MainLayout>
     );

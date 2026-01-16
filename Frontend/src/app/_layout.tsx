@@ -47,11 +47,11 @@ function RootLayoutNav() {
   return (
     <Stack screenOptions={{ animation: 'fade', headerShown: false }}>
       <Stack.Screen name="index" />
-      <Stack.Screen name="login" />
+      <Stack.Screen name="signin" />
       <Stack.Screen name="signup" />
-      <Stack.Screen name="home" />
+      <Stack.Screen name="dashboard" />
       <Stack.Screen name="attendance" />
-      <Stack.Screen name="reports" />
+      <Stack.Screen name="team" />
       <Stack.Screen name="profile" />
     </Stack>
   );

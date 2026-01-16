@@ -1,5 +1,5 @@
 import { Dashboard } from '../pages/Dashboard';
 
-export default function Home() {
+export default function DashboardRoute() {
     return <Dashboard />;
 }
