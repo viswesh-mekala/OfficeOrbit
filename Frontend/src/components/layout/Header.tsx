@@ -26,12 +26,12 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
         paddingHorizontal: theme.spacing.l,
-        paddingVertical: theme.spacing.m,
+        paddingVertical: theme.spacing.s,
     },
     logoContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
+        gap: 6,
     },
     logoCircle: {
         width: 32,
@@ -42,7 +42,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
     },
     logoText: {
-        fontSize: 20,
+        fontSize: 22,
         fontWeight: '700',
         color: theme.colors.text.primary,
     },
@@ -50,12 +50,11 @@ const styles = StyleSheet.create({
         position: 'absolute',
         top: 0,
         right: 2,
-        width: 8,
-        height: 8,
-        borderRadius: 4,
+        width: 6,
+        height: 6,
+        borderRadius: 3,
         backgroundColor: 'red',
         borderWidth: 1,
         borderColor: 'white',
     }
-
 });

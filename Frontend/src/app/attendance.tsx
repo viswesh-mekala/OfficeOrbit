@@ -1,26 +1,12 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { MainLayout } from '../components/layout/MainLayout';
-import { theme } from '../theme/theme';
+import { Attendance } from '../pages/Attendance';
+import { BottomLayout } from '../components/layout/BottomLayout';
 
-export default function Attendance() {
+export default function AttendanceRoute() {
     return (
-        <MainLayout>
-            <View style={styles.container}>
-                <Text style={styles.title}>Attendance</Text>
-            </View>
-        </MainLayout>
+        <BottomLayout>
+            <Attendance />
+        </BottomLayout>
     );
 }
 
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        padding: theme.spacing.m,
-    },
-    title: {
-        fontSize: theme.typography.sizes.title,
-        fontWeight: 'bold',
-        color: theme.colors.text.primary,
-    },
-});
+

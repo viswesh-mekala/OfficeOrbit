@@ -269,6 +269,7 @@ const styles = StyleSheet.create({
     loginLinkHighlight: {
         color: theme.colors.primary,
         fontWeight: '700',
+        textDecorationLine: 'underline',
     },
     dividerContainer: {
         flexDirection: 'row',

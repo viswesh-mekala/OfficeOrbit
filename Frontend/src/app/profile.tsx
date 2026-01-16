@@ -1,15 +1,15 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { MainLayout } from '../components/layout/MainLayout';
+import { BottomLayout } from '../components/layout/BottomLayout';
 import { theme } from '../theme/theme';
 
 export default function Profile() {
     return (
-        <MainLayout>
+        <BottomLayout>
             <View style={styles.container}>
                 <Text style={styles.title}>Profile</Text>
             </View>
-        </MainLayout>
+        </BottomLayout>
     );
 }
 

@@ -100,6 +100,16 @@ export const Signin: React.FC = () => {
                             style={{ marginBottom: 20 }}
                         />
 
+                        {/* Sign Up Link */}
+                        <TouchableOpacity
+                            onPress={() => router.push('/signup')}
+                            style={styles.signupLinkContainer}
+                        >
+                            <Text style={styles.signupLinkText}>
+                                Don't have an account? <Text style={styles.signupLinkHighlight}>Sign Up</Text>
+                            </Text>
+                        </TouchableOpacity>
+
                         {/* Divider */}
                         <View style={styles.dividerContainer}>
                             <View style={styles.dividerLine} />
@@ -238,6 +248,20 @@ const styles = StyleSheet.create({
         color: 'white',
         fontSize: 16,
         fontWeight: '700',
+    },
+    signupLinkContainer: {
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    signupLinkText: {
+        color: '#666',
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    signupLinkHighlight: {
+        color: theme.colors.primary,
+        fontWeight: '700',
+        textDecorationLine: 'underline',
     },
     dividerContainer: {
         flexDirection: 'row',

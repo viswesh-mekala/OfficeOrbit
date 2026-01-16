@@ -14,13 +14,15 @@ export const AlertCard: React.FC<AlertCardProps> = ({ title, message, action }) 
     return (
         <Card style={styles.card}>
             <View style={styles.header}>
-                <Ionicons name="warning" size={20} color="#FF9800" />
+                <Ionicons name="warning" size={16} color="#FF9800" />
                 <Text style={styles.title}>{title}</Text>
             </View>
             <Text style={styles.message}>{message}</Text>
-            <TouchableOpacity>
-                <Text style={styles.action}>{action}</Text>
-            </TouchableOpacity>
+            {action ? (
+                <TouchableOpacity>
+                    <Text style={styles.action}>{action}</Text>
+                </TouchableOpacity>
+            ) : null}
         </Card>
     );
 };
@@ -30,23 +32,23 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFF9E6', // Light orange background for alert
         borderWidth: 1,
         borderColor: '#FFE082',
+        padding: 10, // Aggressively reduced padding
     },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: theme.spacing.s,
-        gap: 8,
+        marginBottom: 4, // Tighter
+        gap: 6,
     },
     title: {
-        fontSize: 16,
+        fontSize: 14, // Smaller title
         fontWeight: '700',
         color: '#D84315',
     },
     message: {
-        fontSize: 14,
+        fontSize: 12, // Smaller message
         color: theme.colors.text.primary,
-        marginBottom: theme.spacing.m,
-        lineHeight: 20,
+        lineHeight: 16,
     },
     action: {
         fontSize: 14,

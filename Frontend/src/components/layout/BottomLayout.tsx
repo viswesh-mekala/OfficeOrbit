@@ -4,20 +4,25 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 import { theme } from '../../theme/theme';
+import { BottomTabs } from './BottomTabs';
 
-interface MainLayoutProps {
+interface BottomLayoutProps {
     children: React.ReactNode;
 }
 
-export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
+export const BottomLayout: React.FC<BottomLayoutProps> = ({ children }) => {
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top']}>
             <StatusBar style="dark" />
             <View style={styles.content}>
                 <Animated.View style={{ flex: 1 }} entering={FadeIn.duration(400)}>
-                    {children}
+                    {/* Standard flex container, no special padding needed for floating absolute items */}
+                    <View style={{ flex: 1 }}>
+                        {children}
+                    </View>
                 </Animated.View>
             </View>
+            <BottomTabs />
         </SafeAreaView>
     );
 };
@@ -25,9 +30,10 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.background,
+        backgroundColor: '#FFFFFF', // Clean white
     },
     content: {
         flex: 1,
+        backgroundColor: theme.colors.background,
     },
 });

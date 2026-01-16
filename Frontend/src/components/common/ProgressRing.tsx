@@ -11,8 +11,8 @@ interface ProgressRingProps {
 }
 
 export const ProgressRing: React.FC<ProgressRingProps> = ({ percent, currentDays, totalDays, status }) => {
-    const size = 180;
-    const strokeWidth = 15;
+    const size = 140; // Reduced from 180
+    const strokeWidth = 12; // Reduced from 15
     const radius = (size - strokeWidth) / 2;
     const circumference = radius * 2 * Math.PI;
     const strokeDashoffset = circumference - (percent / 100) * circumference;
@@ -62,8 +62,8 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({ percent, currentDays
 const styles = StyleSheet.create({
     container: {
         backgroundColor: 'white',
-        borderRadius: 30,
-        padding: 24,
+        borderRadius: 24, // Reduced radius
+        padding: 16, // Reduced padding
         alignItems: 'center',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
@@ -72,39 +72,40 @@ const styles = StyleSheet.create({
         elevation: 3,
     },
     headerTitle: {
-        fontSize: 14,
+        fontSize: 12, // Smaller
         fontWeight: '600',
         color: theme.colors.text.secondary,
         alignSelf: 'flex-start',
-        marginBottom: 20,
+        marginBottom: 12,
     },
     ringContainer: {
         position: 'relative',
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 20,
+        marginBottom: 16,
     },
     centerText: {
         position: 'absolute',
         alignItems: 'center',
     },
     percentText: {
-        fontSize: 36,
+        fontSize: 28, // Smaller
         fontWeight: '700',
         color: theme.colors.text.primary,
     },
     daysText: {
-        fontSize: 14,
+        fontSize: 12,
         color: theme.colors.text.secondary,
     },
     statusPill: {
         backgroundColor: '#E8F5E9',
-        paddingVertical: 8,
-        paddingHorizontal: 16,
+        paddingVertical: 6,
+        paddingHorizontal: 14,
         borderRadius: 20,
     },
     statusText: {
         color: theme.colors.success,
         fontWeight: '600',
+        fontSize: 12,
     },
 });

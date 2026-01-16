@@ -7,25 +7,23 @@ import { router, usePathname } from 'expo-router';
 export const BottomTabs: React.FC = () => {
     const pathname = usePathname();
 
-    // Simple state checking for active tab based on pathname
-    // Note: pathname might be /dashboard, /attendance, etc.
-
     const tabs = [
         { name: 'Dashboard', icon: 'grid', route: '/dashboard' },
-        { name: 'Attendance ', icon: 'calendar', route: '/attendance' }, // Mapping attendance to schedule
-        { name: 'Team', icon: 'people', route: '/team' }, // Mapping reports to team for demo
+        { name: 'Attendance', icon: 'calendar', route: '/attendance' },
+        { name: 'Team', icon: 'people', route: '/team' },
         { name: 'Profile', icon: 'person', route: '/profile' },
     ];
 
     return (
         <View style={styles.container}>
             {tabs.map((tab) => {
-                const isActive = pathname.includes(tab.route);
+                const isActive = pathname.startsWith(tab.route);
                 return (
                     <TouchableOpacity
                         key={tab.name}
                         style={styles.tab}
                         onPress={() => router.push(tab.route as any)}
+                        activeOpacity={0.7}
                     >
                         <Ionicons
                             name={isActive ? tab.icon as any : `${tab.icon}-outline` as any}
@@ -47,7 +45,7 @@ const styles = StyleSheet.create({
         paddingVertical: 12,
         borderTopWidth: 1,
         borderTopColor: '#F0F0F0',
-        paddingBottom: 20, // Safe area padding simulation
+        paddingBottom: 20, // Safe area padding
     },
     tab: {
         flex: 1,
