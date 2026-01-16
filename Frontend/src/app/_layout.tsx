@@ -45,12 +45,14 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   return (
-    <Stack>
-      <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen name="home" options={{ headerTitle: "Home" }} />
-      <Stack.Screen name="attendance" options={{ headerTitle: "Attendance" }} />
-      <Stack.Screen name="reports" options={{ headerTitle: "Reports" }} />
-      <Stack.Screen name="profile" options={{ headerTitle: "Profile" }} />
+    <Stack screenOptions={{ animation: 'fade', headerShown: false }}>
+      <Stack.Screen name="index" />
+      <Stack.Screen name="login" />
+      <Stack.Screen name="signup" />
+      <Stack.Screen name="home" />
+      <Stack.Screen name="attendance" />
+      <Stack.Screen name="reports" />
+      <Stack.Screen name="profile" />
     </Stack>
   );
 }

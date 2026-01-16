@@ -1,5 +1,6 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import { Pressable, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
 import { theme } from '../../theme/theme';
 
 interface ButtonProps {
@@ -10,26 +11,65 @@ interface ButtonProps {
     textStyle?: TextStyle;
 }
 
-export const Button = React.forwardRef<React.ElementRef<typeof TouchableOpacity>, ButtonProps>(({
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+export const Button: React.FC<ButtonProps> = ({
     title,
     onPress,
     variant = 'primary',
     style,
     textStyle
-}, ref) => {
+}) => {
+    const scale = useSharedValue(1);
+    const shadowOpacity = useSharedValue(0.3);
+    const shadowRadius = useSharedValue(8);
+    const elevation = useSharedValue(5);
+
+    const animatedStyle = useAnimatedStyle(() => {
+        return {
+            transform: [{ scale: scale.value }],
+            shadowOpacity: shadowOpacity.value,
+            shadowRadius: shadowRadius.value,
+            elevation: elevation.value,
+        };
+    });
+
+    const handlePressIn = () => {
+        scale.value = withSpring(0.96, { damping: 10, stiffness: 300 });
+        if (variant === 'primary') {
+            shadowOpacity.value = withTiming(0.15, { duration: 150 });
+            shadowRadius.value = withTiming(4, { duration: 150 });
+            elevation.value = withTiming(2, { duration: 150 });
+        }
+    };
+
+    const handlePressOut = () => {
+        scale.value = withSpring(1, { damping: 10, stiffness: 300 });
+        if (variant === 'primary') {
+            shadowOpacity.value = withTiming(0.3, { duration: 150 });
+            shadowRadius.value = withTiming(8, { duration: 150 });
+            elevation.value = withTiming(5, { duration: 150 });
+        }
+    };
+
     return (
-        <TouchableOpacity
-            ref={ref}
-            style={[styles.container, variant === 'primary' && styles.primaryContainer, style]}
+        <AnimatedPressable
+            style={[
+                styles.container,
+                variant === 'primary' && styles.primaryContainer,
+                style,
+                animatedStyle
+            ]}
             onPress={onPress}
-            activeOpacity={0.8}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
         >
             <Text style={[styles.text, variant === 'primary' && styles.primaryText, textStyle]}>
                 {title}
             </Text>
-        </TouchableOpacity>
+        </AnimatedPressable>
     );
-});
+};
 
 const styles = StyleSheet.create({
     container: {
@@ -44,9 +84,8 @@ const styles = StyleSheet.create({
         backgroundColor: theme.colors.primary,
         shadowColor: theme.colors.primary,
         shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
-        elevation: 5,
+        // Shadow props are now handled by reanimated style, but defaults are good for initial render if needed
+        // We leave them here but they will be overridden by the animated style updates
     },
     text: {
         fontSize: theme.typography.sizes.button,

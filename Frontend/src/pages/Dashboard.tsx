@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '../theme/theme';
 import { Header } from '../components/layout/Header';
@@ -16,42 +17,56 @@ export const Dashboard: React.FC = () => {
     return (
         <SafeAreaView style={styles.safeArea} edges={['top']}>
             <View style={styles.container}>
-                <Header />
+                {/* Header with Animation */}
+                <Animated.View entering={FadeInDown.duration(600).springify()}>
+                    <Header />
+                </Animated.View>
 
-                <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+                <ScrollView
+                    contentContainerStyle={styles.scrollContent}
+                    showsVerticalScrollIndicator={false}
+                >
                     {/* Greeting Section */}
-                    <View style={styles.greetingSection}>
-                        <Text style={styles.greetingTitle}>Good Morning,</Text>
-                        <Text style={styles.greetingName}>{user.name}</Text>
+                    <Animated.View entering={FadeInDown.delay(100).duration(600).springify()}>
+                        <View style={styles.greetingSection}>
+                            <Text style={styles.greetingTitle}>Good Morning,</Text>
+                            <Text style={styles.greetingName}>{user.name}</Text>
 
-                        <View style={styles.statusContainer}>
-                            <StatusPill status={user.status} location={user.location} />
+                            <View style={styles.statusContainer}>
+                                <StatusPill status={user.status} location={user.location} />
+                            </View>
                         </View>
-                    </View>
+                    </Animated.View>
 
                     {/* Compliance Section */}
-                    <View style={styles.section}>
-                        <ProgressRing
-                            percent={compliance.percent}
-                            currentDays={compliance.currentDays}
-                            totalDays={compliance.totalDays}
-                            status={compliance.status}
-                        />
-                    </View>
+                    <Animated.View entering={FadeInDown.delay(200).duration(600).springify()}>
+                        <View style={styles.section}>
+                            <ProgressRing
+                                percent={compliance.percent}
+                                currentDays={compliance.currentDays}
+                                totalDays={compliance.totalDays}
+                                status={compliance.status}
+                            />
+                        </View>
+                    </Animated.View>
 
                     {/* Metrics Grid */}
-                    <View style={styles.metricsRow}>
-                        {metrics.map((metric, index) => (
-                            <View key={index} style={styles.metricWrapper}>
-                                <MetricCard {...metric} icon={metric.icon as any} />
-                            </View>
-                        ))}
-                    </View>
+                    <Animated.View entering={FadeInDown.delay(300).duration(600).springify()}>
+                        <View style={styles.metricsRow}>
+                            {metrics.map((metric, index) => (
+                                <View key={index} style={styles.metricWrapper}>
+                                    <MetricCard {...metric} icon={metric.icon as any} />
+                                </View>
+                            ))}
+                        </View>
+                    </Animated.View>
 
                     {/* Alert Section */}
-                    <View style={styles.section}>
-                        <AlertCard {...alert} />
-                    </View>
+                    <Animated.View entering={FadeInDown.delay(400).duration(600).springify()}>
+                        <View style={styles.section}>
+                            <AlertCard {...alert} />
+                        </View>
+                    </Animated.View>
 
                 </ScrollView>
 
@@ -64,7 +79,7 @@ export const Dashboard: React.FC = () => {
 const styles = StyleSheet.create({
     safeArea: {
         flex: 1,
-        backgroundColor: '#FAFAFA', // Light grey bg
+        backgroundColor: theme.colors.background, // Using theme background (Light Blue/White)
     },
     container: {
         flex: 1,

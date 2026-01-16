@@ -1,49 +1,126 @@
-// Logic moved from src/app/index.tsx to here
-import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { router, Href, Link } from 'expo-router';
+import { router } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, {
+    FadeInUp,
+    useSharedValue,
+    useAnimatedStyle,
+    withRepeat,
+    withTiming,
+    Easing
+} from 'react-native-reanimated';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/theme';
 import { Button } from '../components/common/Button';
+
+const { width } = Dimensions.get('window');
+
+const OrbitalHero = () => {
+    // Shared Values for animations
+    const rotation = useSharedValue(0);
+    const pulse = useSharedValue(1);
+
+    // Continuous Rotation
+    useEffect(() => {
+        rotation.value = withRepeat(
+            withTiming(360, { duration: 20000, easing: Easing.linear }),
+            -1,
+            false
+        );
+        pulse.value = withRepeat(
+            withTiming(1.1, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
+            -1,
+            true
+        );
+    }, []);
+
+    const animatedOrbitStyle = useAnimatedStyle(() => ({
+        transform: [{ rotate: `${rotation.value}deg` }],
+    }));
+
+    const pulsingCoreStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: pulse.value }],
+    }));
+
+    return (
+        <View style={styles.heroContainer}>
+            {/* The Rotating Orbit System */}
+            <View style={styles.orbitSystem}>
+                {/* Outer Ring */}
+                <Animated.View style={[styles.orbitRing, animatedOrbitStyle]}>
+                    {/* Satellites */}
+                    <View style={[styles.satellite, { top: -20, left: '50%', transform: [{ translateX: -20 }] }]}>
+                        <Ionicons name="home" size={20} color={theme.colors.primary} />
+                    </View>
+                    <View style={[styles.satellite, { bottom: -20, left: '50%', transform: [{ translateX: -20 }] }]}>
+                        <Ionicons name="stats-chart" size={20} color={theme.colors.primary} />
+                    </View>
+                    <View style={[styles.satellite, { top: '50%', left: -20, transform: [{ translateY: -20 }] }]}>
+                        <Ionicons name="business" size={20} color={theme.colors.primary} />
+                    </View>
+                    <View style={[styles.satellite, { top: '50%', right: -20, transform: [{ translateY: -20 }] }]}>
+                        <Ionicons name="location" size={20} color={theme.colors.primary} />
+                    </View>
+                </Animated.View>
+
+                {/* Central Core */}
+                <Animated.View style={[styles.coreWrapper, pulsingCoreStyle]}>
+                    <BlurView intensity={60} tint="light" style={styles.coreGlass}>
+                        <View style={styles.coreInner}>
+                            <Ionicons name="infinite" size={48} color={theme.colors.primary} />
+                        </View>
+                    </BlurView>
+                </Animated.View>
+            </View>
+
+            {/* Status Badge */}
+            <Animated.View entering={FadeInUp.delay(200)} style={styles.statusBadge}>
+                <View style={styles.statusDot} />
+                <Text style={styles.statusText}>WORKSPACE ACTIVE</Text>
+            </Animated.View>
+
+            <Animated.View entering={FadeInUp.delay(400)} style={styles.textContainer}>
+                <Text style={styles.title}>OfficeOrbit</Text>
+                <Text style={styles.subtitle}>
+                    Synchronize your workforce with precision. Intelligence for the modern Hybrid office.
+                </Text>
+            </Animated.View>
+
+            <Animated.View entering={FadeInUp.delay(600)} style={styles.buttonContainer}>
+                <Button
+                    title="Get Started"
+                    onPress={() => router.push('/signup')}
+                    variant="primary"
+                    style={{ width: 200, marginBottom: 16 }}
+                />
+                <TouchableOpacity onPress={() => router.push('/login')}>
+                    <Text style={styles.signInText}>
+                        Already have an account? <Text style={styles.signInLink}>Sign In</Text>
+                    </Text>
+                </TouchableOpacity>
+            </Animated.View>
+        </View>
+    );
+};
 
 export const LandingPage: React.FC = () => {
     return (
         <View style={styles.container}>
             <StatusBar style="dark" />
+
+            {/* Light Gradient Background */}
             <LinearGradient
-                colors={['#Eef2ff', '#ffffff', '#e0e7ff']}
+                colors={['#FFFFFF', '#F0F4FF', '#E8EAF6']}
                 style={styles.background}
             />
 
-            <View style={styles.content}>
-                <View style={styles.logoContainer}>
-                    <View style={styles.logoDesign}>
-                        <View style={styles.pinContainer}>
-                            <LinearGradient
-                                colors={[theme.colors.primary, '#4facfe']}
-                                style={styles.pinGradient}
-                            >
-                                <Ionicons name="checkmark" size={24} color="white" style={styles.checkIcon} />
-                            </LinearGradient>
-                        </View>
-                    </View>
-                </View>
+            <OrbitalHero />
 
-                <View style={styles.textContainer}>
-                    <Text style={styles.title}>OfficeOrbit</Text>
-                    <Text style={styles.subtitle}>
-                        Intelligent work from office tracking{'\n'}for the modern workforce
-                    </Text>
-                </View>
-
-                <View style={styles.footer}>
-                    <Link href={"/home" as Href} asChild>
-                        <Button title="Get Started" />
-                    </Link>
-                    <Text style={styles.designerText}>Designed by Viswesh Nani</Text>
-                </View>
+            <View style={styles.footer}>
+                <Text style={styles.footerText}>Designed by Viswesh</Text>
             </View>
         </View>
     );
@@ -52,81 +129,146 @@ export const LandingPage: React.FC = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.background,
+        backgroundColor: '#F5F7FA',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     background: {
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        top: 0,
-        bottom: 0,
+        ...StyleSheet.absoluteFillObject,
     },
-    content: {
-        flex: 1,
-        paddingHorizontal: theme.spacing.l,
-        justifyContent: 'space-between',
-        paddingVertical: theme.spacing.xxl * 1.5,
-    },
-    logoContainer: {
+    heroContainer: {
         alignItems: 'center',
-        marginTop: theme.spacing.xxl * 2,
-        flex: 1,
         justifyContent: 'center',
+        width: '100%',
+        paddingHorizontal: 20,
     },
-    logoDesign: {
+    orbitSystem: {
+        width: 280,
+        height: 280,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 40,
+    },
+    orbitRing: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 140,
+        borderWidth: 1,
+        borderColor: 'rgba(91, 77, 255, 0.15)', // Light Primary Ring
+        position: 'absolute',
+        borderStyle: 'dashed',
+    },
+    satellite: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'white',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'absolute',
+        shadowColor: theme.colors.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    coreWrapper: {
         width: 120,
         height: 120,
-        backgroundColor: 'white',
-        borderRadius: 40,
-        alignItems: 'center',
-        justifyContent: 'center',
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 10,
-        },
-        shadowOpacity: 0.1,
-        shadowRadius: 20,
+        borderRadius: 60,
+        overflow: 'hidden',
+        shadowColor: theme.colors.primary,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.3,
+        shadowRadius: 30,
         elevation: 10,
     },
-    pinContainer: {
-    },
-    pinGradient: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
+    coreGlass: {
+        flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        borderBottomRightRadius: 5,
-        transform: [{ rotate: '45deg' }],
+        backgroundColor: 'rgba(255, 255, 255, 0.5)',
     },
-    checkIcon: {
-        transform: [{ rotate: '-45deg' }],
+    coreInner: {
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: 'white',
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: theme.colors.primary,
+        shadowOpacity: 0.2,
+        shadowRadius: 10,
+    },
+    statusBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFF',
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderRadius: 20,
+        marginBottom: 24,
+        borderWidth: 1,
+        borderColor: '#EFEFEF',
+        shadowColor: '#000',
+        shadowOpacity: 0.05,
+        shadowRadius: 5,
+        elevation: 2,
+    },
+    statusDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: '#4CAF50',
+        marginRight: 8,
+    },
+    statusText: {
+        color: '#666',
+        fontSize: 12,
+        fontWeight: '600',
+        letterSpacing: 1,
     },
     textContainer: {
         alignItems: 'center',
-        marginBottom: theme.spacing.xxl,
+        marginBottom: 40,
+        maxWidth: width * 0.8,
     },
     title: {
-        fontSize: theme.typography.sizes.title,
+        fontSize: 42,
         fontWeight: '700',
-        color: theme.colors.text.primary,
-        marginBottom: theme.spacing.m,
+        color: '#1A1A1A',
+        marginBottom: 12,
+        letterSpacing: -1,
+        textAlign: 'center',
     },
     subtitle: {
-        fontSize: theme.typography.sizes.subtitle,
-        color: theme.colors.text.secondary,
+        fontSize: 16,
+        color: '#666',
         textAlign: 'center',
         lineHeight: 24,
     },
-    footer: {
+    buttonContainer: {
         width: '100%',
         alignItems: 'center',
-        gap: theme.spacing.l,
     },
-    designerText: {
-        fontSize: 12,
-        color: theme.colors.text.secondary,
-        opacity: 0.5,
+    signInText: {
+        color: '#666',
+        fontSize: 14,
+    },
+    signInLink: {
+        fontWeight: '700',
+        color: theme.colors.primary,
+        textDecorationLine: 'underline',
+    },
+    footer: {
+        position: 'absolute',
+        bottom: 32,
+        alignItems: 'center',
+    },
+    footerText: {
+        color: 'rgba(0,0,0,0.25)',
+        fontSize: 11,
+        fontWeight: '600',
+        letterSpacing: 0.5,
     },
 });
