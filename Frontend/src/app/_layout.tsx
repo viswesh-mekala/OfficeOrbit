@@ -46,13 +46,11 @@ export default function RootLayout() {
 function RootLayoutNav() {
   return (
     <Stack screenOptions={{ animation: 'fade', headerShown: false }}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="signin" />
-      <Stack.Screen name="signup" />
-      <Stack.Screen name="dashboard" />
-      <Stack.Screen name="attendance" />
-      <Stack.Screen name="team" />
-      <Stack.Screen name="profile" />
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="dashboard" options={{ headerTitle: "Dashboard" }} />
+      <Stack.Screen name="attendance" options={{ headerTitle: "Attendance" }} />
+      <Stack.Screen name="profile" options={{ headerTitle: "Profile" }} />
+      <Stack.Screen name="team" options={{ headerTitle: "Team" }} />
     </Stack>
   );
 }

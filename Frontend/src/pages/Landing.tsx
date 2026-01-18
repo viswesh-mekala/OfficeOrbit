@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { router } from 'expo-router';
+import { router, Link, Href } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
     FadeInUp,
@@ -53,7 +53,9 @@ const OrbitalHero = () => {
                 <Animated.View style={[styles.orbitRing, animatedOrbitStyle]}>
                     {/* Satellites */}
                     <View style={[styles.satellite, { top: -20, left: '50%', transform: [{ translateX: -20 }] }]}>
-                        <Ionicons name="home" size={20} color={theme.colors.primary} />
+                        <Link href={"/dashboard" as Href} asChild>
+                            <Ionicons name="home" size={20} color={theme.colors.primary} />
+                        </Link>
                     </View>
                     <View style={[styles.satellite, { bottom: -20, left: '50%', transform: [{ translateX: -20 }] }]}>
                         <Ionicons name="stats-chart" size={20} color={theme.colors.primary} />
