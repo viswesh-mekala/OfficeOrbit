@@ -1,4 +1,4 @@
-import { Signin } from '../pages/Signin';
+import { Signin } from '../screens/auth/SigninScreen';
 
 export default function SigninRoute() {
     return <Signin />;

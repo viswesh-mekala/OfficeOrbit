@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, FlatList, Platform, KeyboardAvoidingView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../theme/theme';
-import { Input } from '../components/common/Input';
-import { Button } from '../components/common/Button';
-import { Card } from '../components/common/Card';
-import { Avatar } from '../components/common/Avatar';
+import { theme } from '../../theme/theme';
+import { Input } from '../../components/common/Input';
+import { Button } from '../../components/common/Button';
+import { Card } from '../../components/common/Card';
+import { Avatar } from '../../components/common/Avatar';
 
 // Mock data types
 interface TeamMember {

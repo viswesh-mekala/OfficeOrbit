@@ -4,20 +4,9 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef } from 'react';
 import { View, ActivityIndicator, StyleSheet, BackHandler, Platform } from 'react-native';
 import 'react-native-reanimated';
-import { AuthProvider, useAuth } from '../context/AuthContext';
+import { AuthProvider, useAuth } from '../store/AuthContext';
 import { theme } from '../theme/theme';
-
-export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
-} from 'expo-router';
-
-export const unstable_settings = {
-  initialRouteName: 'index',
-};
-
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+import { TransitionOverlay } from '../components/common/TransitionOverlay';
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({});
@@ -43,18 +32,14 @@ function RootLayoutNav() {
   const segments = useSegments();
   const hasNavigated = useRef(false);
 
+  const currentRoute = (segments[0] as string) || 'index';
+  const authRoutes = ['signin', 'signup', 'verify-otp', 'auth-callback'];
+  const isAuthRoute = authRoutes.includes(currentRoute);
+  const publicRoutes = ['index', ...authRoutes];
+  const isPublicRoute = publicRoutes.includes(currentRoute);
+
   useEffect(() => {
     if (loading) return;
-
-    const currentRoute = (segments[0] as string) || 'index';
-
-    // Auth-related routes (user shouldn't be here after login)
-    const authRoutes = ['signin', 'signup', 'verify-otp', 'auth-callback'];
-    const isAuthRoute = authRoutes.includes(currentRoute);
-
-    // All public routes — no auth needed
-    const publicRoutes = ['index', ...authRoutes];
-    const isPublicRoute = publicRoutes.includes(currentRoute);
 
     if (!session) {
       // ── NOT LOGGED IN ──
@@ -104,29 +89,47 @@ function RootLayoutNav() {
     }
   }, [session, segments]);
 
-  // Show loading splash only during initial auth check
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
-      </View>
-    );
-  }
+    // Determine if we should show the overlay
+    // 1. Initial loading
+    // 2. Profile loading
+    // 3. User is logged in but still on an auth screen (redirecting...)
+    const shouldShowOverlay = 
+      loading || 
+      profileLoading;
 
-  return (
-    <Stack screenOptions={{ animation: 'fade', headerShown: false }}>
-      <Stack.Screen name="index" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="signin" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="signup" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="verify-otp" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="auth-callback" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="dashboard" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="attendance" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="profile" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="team" options={{ headerShown: false, gestureEnabled: false }} />
-    </Stack>
-  );
+    if (loading) {
+        return (
+          <TransitionOverlay 
+            message="Initializing Orbit..." 
+            subMessage="Preparing your workspace" 
+          />
+        );
+    }
+
+    return (
+        <>
+            <Stack screenOptions={{ animation: 'fade', headerShown: false }}>
+                <Stack.Screen name="index" options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="signin" options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="signup" options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="verify-otp" options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="auth-callback" options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="dashboard" options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="attendance" options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="profile" options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="team" options={{ headerShown: false, gestureEnabled: false }} />
+            </Stack>
+
+            {/* Global Transition Overlay for Profile Loading, Auth Redirects, or other blocking states */}
+            {shouldShowOverlay && (
+              <TransitionOverlay 
+                message=""
+                subMessage=""
+              />
+            )}
+        </>
+    );
 }
 
 const styles = StyleSheet.create({

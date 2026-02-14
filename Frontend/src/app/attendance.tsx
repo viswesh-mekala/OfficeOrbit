@@ -1,4 +1,4 @@
-import { Attendance } from '../pages/Attendance';
+import { Attendance } from '../screens/attendance/AttendanceScreen';
 import { BottomLayout } from '../components/layout/BottomLayout';
 
 export default function AttendanceRoute() {

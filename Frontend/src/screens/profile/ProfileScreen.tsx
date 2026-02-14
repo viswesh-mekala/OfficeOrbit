@@ -17,9 +17,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { theme } from '../theme/theme';
-import { Button } from '../components/common/Button';
-import { useAuth, CompanyLocation } from '../context/AuthContext';
+import { theme } from '../../theme/theme';
+import { Button } from '../../components/common/Button';
+import { useAuth } from '../../store/AuthContext';
+import { CompanyLocation } from '../../types/auth.types';
 
 const { width } = Dimensions.get('window');
 

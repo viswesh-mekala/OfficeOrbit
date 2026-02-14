@@ -26,9 +26,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { theme } from '../theme/theme';
-import { Button } from '../components/common/Button';
-import { useAuth } from '../context/AuthContext';
+import { theme } from '../../theme/theme';
+import { Button } from '../../components/common/Button';
+import { useAuth } from '../../store/AuthContext';
 
 const { width } = Dimensions.get('window');
 const OTP_LENGTH = 8;

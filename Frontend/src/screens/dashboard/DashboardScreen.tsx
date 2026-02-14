@@ -2,16 +2,16 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { theme } from '../theme/theme';
-import { Header } from '../components/layout/Header';
-import { StatusPill } from '../components/common/StatusPill';
-import { ProgressRing } from '../components/common/ProgressRing';
-import { MetricCard } from '../components/common/MetricCard';
-import { AlertCard } from '../components/common/AlertCard';
-import { WeeklyStatCard } from '../components/common/WeeklyStatCard';
-import { dashboardData } from '../constants/dashboardData';
+import { theme } from '../../theme/theme';
+import { Header } from '../../components/layout/Header';
+import { StatusPill } from '../../components/common/StatusPill';
+import { ProgressRing } from '../../components/common/ProgressRing';
+import { MetricCard } from '../../components/common/MetricCard';
+import { AlertCard } from '../../components/common/AlertCard';
+import { WeeklyStatCard } from '../../components/common/WeeklyStatCard';
+import { dashboardData } from '../../constants/dashboardData';
 
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../../store/AuthContext';
 
 export const Dashboard: React.FC = () => {
     const { user: authUser, profile, loading: authLoading } = useAuth();

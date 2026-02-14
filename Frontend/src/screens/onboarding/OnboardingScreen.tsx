@@ -33,9 +33,10 @@ import Animated, {
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
-import { theme } from '../theme/theme';
-import { Button } from '../components/common/Button';
-import { useAuth, CompanyLocation } from '../context/AuthContext';
+import { theme } from '../../theme/theme';
+import { Button } from '../../components/common/Button';
+import { useAuth } from '../../store/AuthContext';
+import { CompanyLocation } from '../../types/auth.types';
 
 const { width, height } = Dimensions.get('window');
 

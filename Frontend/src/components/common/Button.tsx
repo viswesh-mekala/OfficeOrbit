@@ -1,6 +1,6 @@
-import React from 'react';
-import { Pressable, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming } from 'react-native-reanimated';
+import React, { useEffect } from 'react';
+import { Pressable, Text, StyleSheet, ViewStyle, TextStyle, ActivityIndicator } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming, withRepeat, Easing, useAnimatedProps } from 'react-native-reanimated';
 import { theme } from '../../theme/theme';
 
 interface ButtonProps {
@@ -10,6 +10,7 @@ interface ButtonProps {
     style?: ViewStyle;
     textStyle?: TextStyle;
     disabled?: boolean;
+    loading?: boolean;
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -21,11 +22,15 @@ export const Button: React.FC<ButtonProps> = ({
     style,
     textStyle,
     disabled = false,
+    loading = false,
 }) => {
     const scale = useSharedValue(1);
     const shadowOpacity = useSharedValue(0.3);
     const shadowRadius = useSharedValue(8);
     const elevation = useSharedValue(5);
+    
+    // Derived state for effective disabled status
+    const isEffectiveDisabled = disabled || loading;
 
     const animatedStyle = useAnimatedStyle(() => {
         return {
@@ -33,10 +38,12 @@ export const Button: React.FC<ButtonProps> = ({
             shadowOpacity: shadowOpacity.value,
             shadowRadius: shadowRadius.value,
             elevation: elevation.value,
+            opacity: isEffectiveDisabled ? 0.7 : 1,
         };
     });
 
     const handlePressIn = () => {
+        if (isEffectiveDisabled) return;
         scale.value = withSpring(0.96, { damping: 10, stiffness: 300 });
         if (variant === 'primary') {
             shadowOpacity.value = withTiming(0.15, { duration: 150 });
@@ -46,6 +53,7 @@ export const Button: React.FC<ButtonProps> = ({
     };
 
     const handlePressOut = () => {
+        if (isEffectiveDisabled) return;
         scale.value = withSpring(1, { damping: 10, stiffness: 300 });
         if (variant === 'primary') {
             shadowOpacity.value = withTiming(0.3, { duration: 150 });
@@ -59,37 +67,38 @@ export const Button: React.FC<ButtonProps> = ({
             style={[
                 styles.container,
                 variant === 'primary' && styles.primaryContainer,
-                disabled && styles.disabled,
                 style,
                 animatedStyle
             ]}
-            onPress={disabled ? undefined : onPress}
-            onPressIn={disabled ? undefined : handlePressIn}
-            onPressOut={disabled ? undefined : handlePressOut}
-            disabled={disabled}
+            onPress={isEffectiveDisabled ? undefined : onPress}
+            onPressIn={handlePressIn}
+            onPressOut={handlePressOut}
+            disabled={isEffectiveDisabled}
         >
-            <Text style={[styles.text, variant === 'primary' && styles.primaryText, textStyle]}>
-                {title}
-            </Text>
+            {loading ? (
+                <ActivityIndicator color={variant === 'primary' ? 'white' : theme.colors.primary} />
+            ) : (
+                <Text style={[styles.text, variant === 'primary' && styles.primaryText, textStyle]}>
+                    {title}
+                </Text>
+            )}
         </AnimatedPressable>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
-        paddingVertical: theme.spacing.m,
         paddingHorizontal: theme.spacing.xl,
         borderRadius: 50, // Pill shape
         alignItems: 'center',
         justifyContent: 'center',
         width: '100%',
+        height: 48, // Fixed height to prevent layout shift when switching to spinner
     },
     primaryContainer: {
         backgroundColor: theme.colors.primary,
         shadowColor: theme.colors.primary,
         shadowOffset: { width: 0, height: 4 },
-        // Shadow props are now handled by reanimated style, but defaults are good for initial render if needed
-        // We leave them here but they will be overridden by the animated style updates
     },
     text: {
         fontSize: theme.typography.sizes.button,
@@ -97,8 +106,5 @@ const styles = StyleSheet.create({
     },
     primaryText: {
         color: theme.colors.white,
-    },
-    disabled: {
-        opacity: 0.5,
     },
 });

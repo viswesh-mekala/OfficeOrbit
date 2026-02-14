@@ -13,17 +13,15 @@ import Animated, {
 } from 'react-native-reanimated';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
-import { theme } from '../theme/theme';
-import { Button } from '../components/common/Button';
+import { theme } from '../../theme/theme';
+import { Button } from '../../components/common/Button';
 
 const { width } = Dimensions.get('window');
 
 const OrbitalHero = () => {
-    // Shared Values for animations
     const rotation = useSharedValue(0);
     const pulse = useSharedValue(1);
 
-    // Continuous Rotation
     useEffect(() => {
         rotation.value = withRepeat(
             withTiming(360, { duration: 20000, easing: Easing.linear }),
@@ -47,11 +45,8 @@ const OrbitalHero = () => {
 
     return (
         <View style={styles.heroContainer}>
-            {/* The Rotating Orbit System */}
             <View style={styles.orbitSystem}>
-                {/* Outer Ring */}
                 <Animated.View style={[styles.orbitRing, animatedOrbitStyle]}>
-                    {/* Satellites */}
                     <View style={[styles.satellite, { top: -20, left: '50%', transform: [{ translateX: -20 }] }]}>
                         <Link href={"/dashboard" as Href} asChild>
                             <Ionicons name="home" size={20} color={theme.colors.primary} />
@@ -68,7 +63,6 @@ const OrbitalHero = () => {
                     </View>
                 </Animated.View>
 
-                {/* Central Core */}
                 <Animated.View style={[styles.coreWrapper, pulsingCoreStyle]}>
                     <BlurView intensity={60} tint="light" style={styles.coreGlass}>
                         <View style={styles.coreInner}>
@@ -78,7 +72,6 @@ const OrbitalHero = () => {
                 </Animated.View>
             </View>
 
-            {/* Status Badge */}
             <Animated.View entering={FadeInUp.delay(200)} style={styles.statusBadge}>
                 <View style={styles.statusDot} />
                 <Text style={styles.statusText}>WORKSPACE ACTIVE</Text>
@@ -112,15 +105,11 @@ export const LandingPage: React.FC = () => {
     return (
         <View style={styles.container}>
             <StatusBar style="dark" />
-
-            {/* Light Gradient Background */}
             <LinearGradient
                 colors={['#FFFFFF', '#F0F4FF', '#E8EAF6']}
                 style={styles.background}
             />
-
             <OrbitalHero />
-
             <View style={styles.footer}>
                 <Text style={styles.footerText}>Designed by Viswesh</Text>
             </View>
@@ -156,7 +145,7 @@ const styles = StyleSheet.create({
         height: '100%',
         borderRadius: 140,
         borderWidth: 1,
-        borderColor: 'rgba(91, 77, 255, 0.15)', // Light Primary Ring
+        borderColor: 'rgba(91, 77, 255, 0.15)',
         position: 'absolute',
         borderStyle: 'dashed',
     },

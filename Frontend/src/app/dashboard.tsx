@@ -1,4 +1,4 @@
-import { Dashboard } from '../pages/Dashboard';
+import { Dashboard } from '../screens/dashboard/DashboardScreen';
 import { BottomLayout } from '../components/layout/BottomLayout';
 
 export default function DashboardRoute() {

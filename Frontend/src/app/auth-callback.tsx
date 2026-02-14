@@ -16,7 +16,7 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/theme';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../store/AuthContext';
 
 const { width } = Dimensions.get('window');
 

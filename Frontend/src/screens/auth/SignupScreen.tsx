@@ -5,10 +5,10 @@ import { router } from 'expo-router';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { theme } from '../theme/theme';
-import { Button } from '../components/common/Button';
-import { GoogleIcon } from '../components/icons/GoogleIcon';
-import { useAuth } from '../context/AuthContext';
+import { theme } from '../../theme/theme';
+import { Button } from '../../components/common/Button';
+import { GoogleIcon } from '../../components/icons/GoogleIcon';
+import { useAuth } from '../../store/AuthContext';
 
 const { width } = Dimensions.get('window');
 
@@ -88,21 +88,22 @@ export const Signup: React.FC = () => {
                     bounces={false}
                 >
                 {/* Header Section */}
-                <Animated.View entering={FadeInUp.duration(800)} style={styles.header}>
-                    <View style={styles.logoCircle}>
-                        <Ionicons name="person-add" size={28} color={theme.colors.primary} />
+                <Animated.View entering={FadeInUp.duration(800)} style={{ width: '100%', alignItems: 'center' }}>
+                    <View style={styles.header}>
+                        <View style={styles.logoCircle}>
+                            <Ionicons name="person-add" size={28} color={theme.colors.primary} />
+                        </View>
+                        <Text style={styles.welcomeText}>Create Account</Text>
+                        <Text style={styles.taglineText}>Join Orbit for premium tracking</Text>
                     </View>
-                    <Text style={styles.welcomeText}>Create Account</Text>
-                    <Text style={styles.taglineText}>Join Orbit for premium tracking</Text>
                 </Animated.View>
 
                 {/* Main White Card */}
-                {!isSubmitting && (
-                    <Animated.View
-                        entering={FadeInUp.delay(200).duration(800).springify()}
-                        exiting={FadeIn.duration(300)}
-                        style={styles.card}
-                    >
+                <Animated.View 
+                    entering={FadeInUp.delay(200).duration(800).springify()}
+                    style={{ width: '100%', alignItems: 'center' }}
+                >
+                    <View style={styles.card}>
                         {/* Inputs */}
                         <View style={styles.form}>
                             <View style={styles.inputWrapper}>
@@ -114,6 +115,7 @@ export const Signup: React.FC = () => {
                                     value={username}
                                     onChangeText={setUsername}
                                     autoCapitalize="none"
+                                    editable={!isSubmitting}
                                 />
                             </View>
 
@@ -127,6 +129,7 @@ export const Signup: React.FC = () => {
                                     onChangeText={setEmail}
                                     autoCapitalize="none"
                                     keyboardType="email-address"
+                                    editable={!isSubmitting}
                                 />
                             </View>
 
@@ -139,10 +142,12 @@ export const Signup: React.FC = () => {
                                     value={password}
                                     onChangeText={setPassword}
                                     secureTextEntry={!showPassword}
+                                    editable={!isSubmitting}
                                 />
                                 <TouchableOpacity
                                     onPress={() => setShowPassword(!showPassword)}
                                     style={styles.eyeIcon}
+                                    disabled={isSubmitting}
                                 >
                                     <Ionicons
                                         name={showPassword ? "eye-off-outline" : "eye-outline"}
@@ -163,6 +168,7 @@ export const Signup: React.FC = () => {
                         <Button
                             title="Create Account"
                             onPress={handleSignup}
+                            loading={isSubmitting}
                             style={{ marginBottom: 16 }}
                         />
 
@@ -189,13 +195,15 @@ export const Signup: React.FC = () => {
                             <GoogleIcon size={20} />
                             <Text style={styles.googleButtonText}>Continue with Google</Text>
                         </TouchableOpacity>
-                    </Animated.View>
-                )}
+                    </View>
+                </Animated.View>
 
                 {/* Secure Footer */}
-                <Animated.View entering={FadeIn.delay(600)} style={styles.secureFooter}>
-                    <Ionicons name="shield-checkmark" size={12} color="#999" />
-                    <Text style={styles.secureText}>Your data is secure and encrypted.</Text>
+                <Animated.View entering={FadeIn.delay(600)} style={{ width: '100%', alignItems: 'center' }}>
+                    <View style={styles.secureFooter}>
+                        <Ionicons name="shield-checkmark" size={12} color="#999" />
+                        <Text style={styles.secureText}>Your data is secure and encrypted.</Text>
+                    </View>
                 </Animated.View>
 
                 </ScrollView>
