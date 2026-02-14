@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, FlatList, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, FlatList, Platform, KeyboardAvoidingView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../theme/theme';
@@ -178,7 +178,13 @@ export const TeamPage: React.FC = () => {
 
     return (
         <View style={styles.container}>
-            {isInTeam ? renderTeamDashboard() : renderNoTeamView()}
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
+            >
+                {isInTeam ? renderTeamDashboard() : renderNoTeamView()}
+            </KeyboardAvoidingView>
         </View>
     );
 };

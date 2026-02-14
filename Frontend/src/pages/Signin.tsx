@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, KeyboardAvoidingView, Platform, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TextInput, KeyboardAvoidingView, Platform, TouchableOpacity, Dimensions, Alert, ScrollView } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
@@ -7,21 +7,47 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { theme } from '../theme/theme';
 import { Button } from '../components/common/Button';
+import { GoogleIcon } from '../components/icons/GoogleIcon';
+import { useAuth } from '../context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
 export const Signin: React.FC = () => {
+    const { signInWithEmail, signInWithGoogle } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    const handleAuth = () => {
+    const handleAuth = async () => {
+        if (!email || !password) {
+            setError('Please enter email and password');
+            return;
+        }
+        setError(null);
         setIsSubmitting(true);
-        // Small delay for button feel, then navigate
-        setTimeout(() => {
-            router.replace('/dashboard');
-        }, 500);
+        
+        const { error } = await signInWithEmail(email, password);
+        
+        setIsSubmitting(false);
+        if (error) {
+            setError(error.message);
+        }
+        // Auth guard in _layout.tsx will handle navigation
+    };
+
+    const handleGoogleSignIn = async () => {
+        setError(null);
+        setIsSubmitting(true);
+        
+        const { error } = await signInWithGoogle();
+        
+        setIsSubmitting(false);
+        if (error) {
+            setError(error.message);
+        }
+        // Auth guard in _layout.tsx will handle navigation
     };
 
     return (
@@ -37,7 +63,14 @@ export const Signin: React.FC = () => {
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={styles.content}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
             >
+                <ScrollView
+                    contentContainerStyle={styles.scrollInner}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                    bounces={false}
+                >
                 {/* Header Section */}
                 <Animated.View entering={FadeInUp.duration(800)} style={styles.header}>
                     <View style={styles.logoCircle}>
@@ -91,6 +124,12 @@ export const Signin: React.FC = () => {
                             <TouchableOpacity style={styles.forgotContainer}>
                                 <Text style={styles.forgotText}>Forgot Password?</Text>
                             </TouchableOpacity>
+
+                            {error && (
+                                <View style={styles.errorContainer}>
+                                    <Text style={styles.errorText}>{error}</Text>
+                                </View>
+                            )}
                         </View>
 
                         {/* Action Button */}
@@ -102,7 +141,7 @@ export const Signin: React.FC = () => {
 
                         {/* Sign Up Link */}
                         <TouchableOpacity
-                            onPress={() => router.push('/signup')}
+                            onPress={() => router.replace('/signup' as any)}
                             style={styles.signupLinkContainer}
                         >
                             <Text style={styles.signupLinkText}>
@@ -117,18 +156,15 @@ export const Signin: React.FC = () => {
                             <View style={styles.dividerLine} />
                         </View>
 
-                        {/* Social Grid */}
-                        <View style={styles.socialRow}>
-                            <TouchableOpacity style={styles.socialButton}>
-                                <Ionicons name="logo-google" size={20} color="#333" />
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.socialButton}>
-                                <Ionicons name="logo-apple" size={20} color="#333" />
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.socialButton}>
-                                <Ionicons name="logo-microsoft" size={20} color="#333" />
-                            </TouchableOpacity>
-                        </View>
+                        {/* Google Sign In */}
+                        <TouchableOpacity 
+                            style={styles.googleButton}
+                            onPress={handleGoogleSignIn}
+                            disabled={isSubmitting}
+                        >
+                            <GoogleIcon size={20} />
+                            <Text style={styles.googleButtonText}>Continue with Google</Text>
+                        </TouchableOpacity>
                     </Animated.View>
                 )}
 
@@ -138,6 +174,7 @@ export const Signin: React.FC = () => {
                     <Text style={styles.secureText}>Enterprise SSO available for corporate teams.</Text>
                 </Animated.View>
 
+                </ScrollView>
             </KeyboardAvoidingView>
         </View>
     );
@@ -153,6 +190,9 @@ const styles = StyleSheet.create({
     },
     content: {
         flex: 1,
+    },
+    scrollInner: {
+        flexGrow: 1,
         justifyContent: 'center',
         alignItems: 'center',
         padding: theme.spacing.m,
@@ -305,5 +345,33 @@ const styles = StyleSheet.create({
         color: 'rgba(102, 102, 102, 0.5)', // #666 with 0.5 opacity
         fontSize: 12,
         fontWeight: '500',
+    },
+    errorContainer: {
+        backgroundColor: '#FFE8E8',
+        borderRadius: 8,
+        padding: 12,
+        marginTop: 8,
+    },
+    errorText: {
+        color: '#D32F2F',
+        fontSize: 13,
+        fontWeight: '500',
+        textAlign: 'center',
+    },
+    googleButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        height: 48,
+        backgroundColor: '#FFF',
+        borderWidth: 1,
+        borderColor: '#EEE',
+        borderRadius: 12,
+    },
+    googleButtonText: {
+        color: '#333',
+        fontSize: 14,
+        fontWeight: '600',
     },
 });

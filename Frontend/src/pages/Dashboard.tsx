@@ -11,8 +11,21 @@ import { AlertCard } from '../components/common/AlertCard';
 import { WeeklyStatCard } from '../components/common/WeeklyStatCard';
 import { dashboardData } from '../constants/dashboardData';
 
+import { useAuth } from '../context/AuthContext';
+
 export const Dashboard: React.FC = () => {
-    const { user, compliance, metrics, alert } = dashboardData;
+    const { user: authUser, profile, loading: authLoading } = useAuth();
+    
+    // Fallback data if profile is loading or incomplete
+    const userName = profile?.username || authUser?.user_metadata?.name || 'User';
+    // Use company location address, or just "Remote" / "Not Set"
+    const userLocation = profile?.company_location?.address || 'Location not set';
+    // Status is currently hardcoded until we implement the attendance log system
+    const userStatus = "Checked Out"; 
+
+    // Destructure partial mock data for other sections (Compliance, Metrics etc.) 
+    // We only replace the User Identity section for now.
+    const { compliance, metrics, alert, weekly } = dashboardData;
 
     return (
         <View style={styles.container}>
@@ -30,9 +43,9 @@ export const Dashboard: React.FC = () => {
                     <View style={styles.greetingSection}>
                         <View>
                             <Text style={styles.greetingTitle}>Good Morning,</Text>
-                            <Text style={styles.greetingName}>{user.name}</Text>
+                            <Text style={styles.greetingName}>{userName}</Text>
                         </View>
-                        <StatusPill status={user.status} location={user.location} />
+                        <StatusPill status={userStatus} location={userLocation.split(',')[0]} />
                     </View>
                 </Animated.View>
 

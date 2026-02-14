@@ -9,6 +9,7 @@ interface ButtonProps {
     variant?: 'primary' | 'secondary';
     style?: ViewStyle;
     textStyle?: TextStyle;
+    disabled?: boolean;
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -18,7 +19,8 @@ export const Button: React.FC<ButtonProps> = ({
     onPress,
     variant = 'primary',
     style,
-    textStyle
+    textStyle,
+    disabled = false,
 }) => {
     const scale = useSharedValue(1);
     const shadowOpacity = useSharedValue(0.3);
@@ -57,12 +59,14 @@ export const Button: React.FC<ButtonProps> = ({
             style={[
                 styles.container,
                 variant === 'primary' && styles.primaryContainer,
+                disabled && styles.disabled,
                 style,
                 animatedStyle
             ]}
-            onPress={onPress}
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
+            onPress={disabled ? undefined : onPress}
+            onPressIn={disabled ? undefined : handlePressIn}
+            onPressOut={disabled ? undefined : handlePressOut}
+            disabled={disabled}
         >
             <Text style={[styles.text, variant === 'primary' && styles.primaryText, textStyle]}>
                 {title}
@@ -93,5 +97,8 @@ const styles = StyleSheet.create({
     },
     primaryText: {
         color: theme.colors.white,
+    },
+    disabled: {
+        opacity: 0.5,
     },
 });

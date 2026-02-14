@@ -1,6 +1,6 @@
 export const dashboardData = {
     user: {
-        name: "Alex",
+        name: "Viswesh",
         status: "In Office",
         location: "Bangalore Hub",
     },

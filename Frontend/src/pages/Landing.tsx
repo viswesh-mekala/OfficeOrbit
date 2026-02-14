@@ -94,11 +94,11 @@ const OrbitalHero = () => {
             <Animated.View entering={FadeInUp.delay(600)} style={styles.buttonContainer}>
                 <Button
                     title="Get Started"
-                    onPress={() => router.push('/signup')}
+                    onPress={() => router.replace('/signup' as any)}
                     variant="primary"
                     style={{ width: 200, marginBottom: 16 }}
                 />
-                <TouchableOpacity onPress={() => router.push('/signin')}>
+                <TouchableOpacity onPress={() => router.replace('/signin' as any)}>
                     <Text style={styles.signInText}>
                         Already have an account? <Text style={styles.signInLink}>Sign In</Text>
                     </Text>
