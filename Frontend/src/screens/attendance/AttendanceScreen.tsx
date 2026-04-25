@@ -1,10 +1,11 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme/theme';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Calendar, DateData, LocaleConfig } from 'react-native-calendars';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { getWeeklyAttendance, AttendanceLog } from '../../services/AttendanceService';
 
 
 // Setup basic locale if needed, though default english is fine
@@ -23,46 +24,83 @@ export const Attendance: React.FC = () => {
     const todayString = today.toISOString().split('T')[0];
 
     const [selectedDate, setSelectedDate] = useState(todayString);
-    const [currentMonth, setCurrentMonth] = useState(todayString); // To track which month is displayed
+    const [currentMonth, setCurrentMonth] = useState(todayString);
     const [showDatePicker, setShowDatePicker] = useState(false);
     const [pickerDate, setPickerDate] = useState(new Date());
+    const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    // Mock Presence Data
+    // Fetch real attendance data from API
+    const fetchAttendance = useCallback(async () => {
+        try {
+            setLoading(true);
+            const { data, error } = await getWeeklyAttendance(90); // fetch up to 90 days
+            if (!error && data) {
+                setAttendanceLogs(data);
+            }
+        } catch (err) {
+            console.error('Failed to fetch attendance:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchAttendance();
+    }, [fetchAttendance]);
+
+    // Build calendar markings from real data
+    const attendanceByDate = useMemo(() => {
+        const map: { [key: string]: AttendanceLog } = {};
+        attendanceLogs.forEach(log => {
+            map[log.date] = log;
+        });
+        return map;
+    }, [attendanceLogs]);
+
     const presentDates = useMemo(() => {
         const dates: { [key: string]: any } = {};
-        // Generate some random present days for the current month view
-        const year = new Date(currentMonth).getFullYear();
-        const month = new Date(currentMonth).getMonth() + 1;
-        const daysInMonth = new Date(year, month, 0).getDate();
+        attendanceLogs.forEach(log => {
+            let dotColor = '#00C853'; // green = office
+            if (log.status === 'wfh') dotColor = '#2196F3'; // blue = WFH
+            else if (log.status === 'absent') dotColor = '#F44336'; // red = absent
+            else if (log.status === 'leave') dotColor = '#FF9800'; // orange = leave
+            else if (log.status === 'holiday') dotColor = '#9C27B0'; // purple = holiday
 
-        for (let i = 1; i <= daysInMonth; i++) {
-            // Randomly mark some days as present (except weekends maybe)
-            if (Math.random() > 0.3) {
-                const dayStr = i < 10 ? `0${i}` : `${i}`;
-                const monthStr = month < 10 ? `0${month}` : `${month}`;
-                const dateKey = `${year}-${monthStr}-${dayStr}`;
-                dates[dateKey] = { marked: true, dotColor: '#00C853' };
-            }
-        }
+            dates[log.date] = { marked: true, dotColor };
+        });
         return dates;
-    }, [currentMonth]);
+    }, [attendanceLogs]);
 
     // Merged Marked Dates (Presence + Selection)
     const markedDates = useMemo(() => {
         const marks = { ...presentDates };
-
-        // Add styling for the selected date
         if (selectedDate) {
             marks[selectedDate] = {
                 ...(marks[selectedDate] || {}),
                 selected: true,
                 selectedColor: '#1A1A1A',
                 selectedTextColor: '#FFFFFF',
-                dotColor: marks[selectedDate] ? '#FFFFFF' : undefined // White dot if selected
+                dotColor: marks[selectedDate] ? '#FFFFFF' : undefined
             };
         }
         return marks;
     }, [presentDates, selectedDate]);
+
+    // Get selected day's log
+    const selectedLog = attendanceByDate[selectedDate] || null;
+
+    // Format check-in/out times for display
+    const formatLogTime = (isoString: string | null): string => {
+        if (!isoString) return '--:--';
+        const d = new Date(isoString);
+        const hours = d.getHours();
+        const minutes = d.getMinutes();
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const displayHours = hours % 12 || 12;
+        const displayMinutes = minutes < 10 ? `0${minutes}` : minutes;
+        return `${displayHours}:${displayMinutes} ${ampm}`;
+    };
 
     const handleMonthChange = (date: DateData) => {
         setCurrentMonth(date.dateString);
@@ -76,10 +114,8 @@ export const Attendance: React.FC = () => {
         if (Platform.OS === 'android') {
             setShowDatePicker(false);
         }
-
         if (date) {
             setPickerDate(date);
-            // Update calendar view to this month
             const newDateStr = date.toISOString().split('T')[0];
             setCurrentMonth(newDateStr);
             setSelectedDate(newDateStr);
@@ -97,6 +133,19 @@ export const Attendance: React.FC = () => {
         const d = new Date(selectedDate);
         return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     }, [selectedDate]);
+
+    // Status label for the selected day
+    const getStatusLabel = (log: AttendanceLog | null): string => {
+        if (!log) return 'No Record';
+        switch (log.status) {
+            case 'present': return 'Office';
+            case 'wfh': return 'Work From Home';
+            case 'leave': return 'Leave';
+            case 'holiday': return 'Holiday';
+            case 'absent': return 'Absent';
+            default: return 'Unknown';
+        }
+    };
 
 
     return (
@@ -187,16 +236,19 @@ export const Attendance: React.FC = () => {
                         <View>
                             <Text style={styles.summaryDate}>{summaryDateDisplay}</Text>
                             <View style={styles.statusRow}>
-                                <View style={styles.statusBadge}>
-                                    <View style={styles.statusBadgeDot} />
-                                    <Text style={styles.statusBadgeText}>Office</Text>
+                                <View style={[styles.statusBadge, !selectedLog && { backgroundColor: '#F5F5F5' }]}>
+                                    <View style={[styles.statusBadgeDot, !selectedLog && { backgroundColor: '#999' }]} />
+                                    <Text style={[styles.statusBadgeText, !selectedLog && { color: '#999' }]}>
+                                        {getStatusLabel(selectedLog)}
+                                    </Text>
                                 </View>
-                                <Text style={styles.statusTime}>• Hybrid</Text>
+                                {selectedLog?.duration_minutes ? (
+                                    <Text style={styles.statusTime}>
+                                        • {Math.floor(selectedLog.duration_minutes / 60)}h {selectedLog.duration_minutes % 60}m
+                                    </Text>
+                                ) : null}
                             </View>
                         </View>
-                        <TouchableOpacity style={styles.editButton}>
-                            <Ionicons name="pencil" size={16} color="#666" />
-                        </TouchableOpacity>
                     </View>
 
                     {/* Timeline */}
@@ -212,10 +264,11 @@ export const Attendance: React.FC = () => {
                             <View style={styles.timelineContent}>
                                 <Text style={styles.timelineLabel}>Arrival</Text>
                                 <Text style={styles.timelineLocation}>
-                                    <Ionicons name="location-sharp" size={12} color="#999" /> HQ - Floor 1, Lobby Gate
+                                    <Ionicons name="location-sharp" size={12} color="#999" />
+                                    {' '}{selectedLog?.location_check_in?.address || 'N/A'}
                                 </Text>
                             </View>
-                            <Text style={styles.timelineTime}>09:12 AM</Text>
+                            <Text style={styles.timelineTime}>{formatLogTime(selectedLog?.check_in ?? null)}</Text>
                         </View>
 
                         {/* Departure */}
@@ -226,10 +279,11 @@ export const Attendance: React.FC = () => {
                             <View style={styles.timelineContent}>
                                 <Text style={styles.timelineLabel}>Departure</Text>
                                 <Text style={styles.timelineLocation}>
-                                    <Ionicons name="business" size={12} color="#999" /> HQ - Floor 4, Zone B
+                                    <Ionicons name="business" size={12} color="#999" />
+                                    {' '}{selectedLog?.check_out ? 'Checked out' : 'Not yet'}
                                 </Text>
                             </View>
-                            <Text style={styles.timelineTime}>06:45 PM</Text>
+                            <Text style={styles.timelineTime}>{formatLogTime(selectedLog?.check_out ?? null)}</Text>
                         </View>
                     </View>
 

@@ -21,6 +21,7 @@ import { theme } from '../../theme/theme';
 import { Button } from '../../components/common/Button';
 import { useAuth } from '../../store/AuthContext';
 import { CompanyLocation } from '../../types/auth.types';
+import { parseTimeToDate, formatTimeDisplay, formatTimeForDB, formatTime } from '../../utils/time';
 
 const { width } = Dimensions.get('window');
 
@@ -103,43 +104,7 @@ const SectionCard = ({
     </Animated.View>
 );
 
-/* ─────────── Time Helpers ─────────── */
-const parseTimeToDate = (timeStr: string | null): Date => {
-    const d = new Date();
-    if (timeStr) {
-        const parts = timeStr.split(':');
-        d.setHours(parseInt(parts[0]) || 9, parseInt(parts[1]) || 0, 0, 0);
-    } else {
-        d.setHours(9, 0, 0, 0);
-    }
-    return d;
-};
-
-const formatTimeDisplay = (timeStr: string | null): string => {
-    if (!timeStr) return '--:--';
-    const parts = timeStr.split(':');
-    const hours = parseInt(parts[0]);
-    const minutes = parts[1] || '00';
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    const displayHours = hours % 12 || 12;
-    return `${displayHours}:${minutes} ${ampm}`;
-};
-
-const formatTimeForDB = (date: Date): string => {
-    const hours = date.getHours().toString().padStart(2, '0');
-    const minutes = date.getMinutes().toString().padStart(2, '0');
-    return `${hours}:${minutes}`;
-};
-
-const formatTime = (date: Date) => {
-    const hours = date.getHours();
-    const minutes = date.getMinutes();
-    const ampm = hours >= 12 ? 'PM' : 'AM';
-    const displayHours = hours % 12 || 12;
-    const displayMinutes = minutes < 10 ? `0${minutes}` : minutes;
-    return `${displayHours}:${displayMinutes} ${ampm}`;
-};
-
+/* ─────────── WFH Period Options ─────────── */
 const WFH_PERIODS = [
     { label: 'Per Week', value: 'week' },
     { label: 'Per Month', value: 'month' },
@@ -217,7 +182,7 @@ export const Profile: React.FC = () => {
             company: company.trim(),
             company_location: profile?.company_location
                 ? { ...profile.company_location, address: companyLocation.trim() }
-                : ({ latitude: 0, longitude: 0, address: companyLocation.trim() } as CompanyLocation),
+                : undefined, // Don't save 0,0 coordinates — leave as null
             office_window_start: formatTimeForDB(officeStart),
             office_window_end: formatTimeForDB(officeEnd),
             minimum_login_time_minutes: loginTimeMinutes,

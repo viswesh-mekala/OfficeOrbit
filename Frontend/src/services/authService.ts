@@ -53,7 +53,7 @@ export const signUpWithEmail = async (email: string, password: string, username:
 export const signInWithGoogle = async () => {
     try {
         const redirectUrl = makeRedirectUri({
-            scheme: 'frontend',
+            scheme: 'officeorbit',
             path: 'auth/callback',
         });
 

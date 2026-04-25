@@ -4,9 +4,12 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef } from 'react';
 import { View, ActivityIndicator, StyleSheet, BackHandler, Platform } from 'react-native';
 import 'react-native-reanimated';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from '../store/AuthContext';
 import { theme } from '../theme/theme';
 import { TransitionOverlay } from '../components/common/TransitionOverlay';
+import { startBackgroundUpdate, stopBackgroundUpdate } from '../services/LocationService';
+import '../services/BackgroundTasks'; // Register the task
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({});
@@ -16,21 +19,36 @@ export default function RootLayout() {
   }, [error]);
 
   useEffect(() => {
-    SplashScreen.hideAsync();
+    if (loaded) {
+      SplashScreen.hideAsync();
+    }
   }, [loaded]);
 
   return (
-    <AuthProvider>
-      <RootLayoutNav />
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <RootLayoutNav />
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
+
+
 
 // Auth-gated navigation — production-grade like Flipkart/Amazon
 function RootLayoutNav() {
   const { session, loading, profileLoading, isProfileComplete } = useAuth();
   const segments = useSegments();
   const hasNavigated = useRef(false);
+
+  // Monitor Auth for Background Location
+  useEffect(() => {
+    if (session && isProfileComplete) {
+      startBackgroundUpdate();
+    } else {
+      stopBackgroundUpdate();
+    }
+  }, [session, isProfileComplete]);
 
   const currentRoute = (segments[0] as string) || 'index';
   const authRoutes = ['signin', 'signup', 'verify-otp', 'auth-callback'];
@@ -124,19 +142,12 @@ function RootLayoutNav() {
             {/* Global Transition Overlay for Profile Loading, Auth Redirects, or other blocking states */}
             {shouldShowOverlay && (
               <TransitionOverlay 
-                message=""
-                subMessage=""
+                message="Loading Profile..."
+                subMessage="Setting up your workspace"
               />
             )}
         </>
     );
 }
 
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: theme.colors.background,
-  },
-});
+

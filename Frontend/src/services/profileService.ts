@@ -1,88 +1,64 @@
-import { supabase } from './api/supabaseClient';
-import { friendlyErrorMessage } from '../utils/errorHandler';
+import { callApi } from './api/apiClient';
 import { UserProfile } from '../types/auth.types';
 
 /**
- * Profile Service — all profile-related Supabase calls.
- * Pure async functions, no React state.
+ * Profile Service — all profile operations through Edge Functions.
+ * No direct database access.
  */
 
-// ── Fetch Profile with retry (handles DB trigger race condition) ──
+// ── Fetch Profile ──
 export const fetchUserProfile = async (
-    userId: string,
+    _userId: string,
     retryCount = 0
 ): Promise<{ data: UserProfile | null; error: string | null; shouldClearSession: boolean }> => {
     const MAX_RETRIES = 2;
     const RETRY_DELAY = 1500;
 
-    try {
-        const { data, error } = await supabase
-            .from('user_profiles')
-            .select('*')
-            .eq('id', userId)
-            .single();
+    const { data, error } = await callApi<UserProfile>('profile-get');
 
-        if (error) {
-            // Auth errors (user deleted from Supabase) → signal to clear session
-            if (
-                error.message.includes('JWT') ||
-                error.message.includes('token') ||
-                error.code === '401' ||
-                error.code === 'PGRST301'
-            ) {
-                console.warn('[Auth] Session invalid, clearing...');
-                return { data: null, error: null, shouldClearSession: true };
-            }
-
-            // Profile not found yet (DB trigger hasn't created it) → silent retry
-            const isNotFound = error.code === 'PGRST116';
-            const isSchemaIssue =
-                error.message.includes('schema cache') ||
-                error.message.includes('does not exist');
-            const isRetryable = isNotFound || isSchemaIssue;
-
-            if (isRetryable && retryCount < MAX_RETRIES) {
-                await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
-                return fetchUserProfile(userId, retryCount + 1);
-            }
-
-            if (!isNotFound) {
-                console.warn('[Profile] Fetch error:', error.message);
-            }
-            return { data: null, error: null, shouldClearSession: false };
+    if (error) {
+        // Auth errors → signal to clear session
+        const msg = error.toLowerCase();
+        if (
+            msg.includes('unauthorized') ||
+            msg.includes('jwt') ||
+            msg.includes('token')
+        ) {
+            console.warn('[Auth] Session invalid, clearing...');
+            return { data: null, error: null, shouldClearSession: true };
         }
 
-        return { data: data as UserProfile, error: null, shouldClearSession: false };
-    } catch (_err) {
-        // Network errors — silent
+        // Profile not found yet (DB trigger race) → silent retry
+        const isRetryable =
+            msg.includes('not found') ||
+            msg.includes('schema') ||
+            msg.includes('does not exist');
+
+        if (isRetryable && retryCount < MAX_RETRIES) {
+            await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY));
+            return fetchUserProfile(_userId, retryCount + 1);
+        }
+
         return { data: null, error: null, shouldClearSession: false };
     }
+
+    return { data, error: null, shouldClearSession: false };
 };
 
 // ── Update Profile ──
 export const updateUserProfile = async (
-    userId: string,
-    data: Partial<UserProfile>
+    _userId: string,
+    profileData: Partial<UserProfile>
 ): Promise<{ error: Error | null }> => {
-    try {
-        const { error } = await supabase
-            .from('user_profiles')
-            .update({
-                ...data,
-                updated_at: new Date().toISOString(),
-            })
-            .eq('id', userId);
+    const { error } = await callApi('profile-update', profileData);
 
-        if (error) throw error;
-        return { error: null };
-    } catch (error: any) {
-        return {
-            error: new Error(friendlyErrorMessage(error.message || 'Failed to save profile')),
-        };
+    if (error) {
+        return { error: new Error(error) };
     }
+    return { error: null };
 };
 
-// ── Check if profile has all required fields ──
+// ── Check if profile has all required fields (pure function — no API call) ──
 export const checkProfileComplete = (profile: UserProfile | null): boolean => {
     if (!profile) return false;
     const loc = profile.company_location;

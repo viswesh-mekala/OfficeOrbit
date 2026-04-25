@@ -102,7 +102,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setSession(session);
             setUser(session?.user ?? null);
             if (session?.user) {
-                fetchProfile(session.user.id);
+                void fetchProfile(session.user.id); // void: intentionally unawaited in sync callback
             } else {
                 setProfile(null);
             }

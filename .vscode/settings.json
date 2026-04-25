@@ -1,0 +1,9 @@
+{
+  "deno.enable": true,
+  "deno.enablePaths": [
+    "./Backend/supabase/functions"
+  ],
+  "deno.config": "./Backend/supabase/functions/deno.jsonc",
+  "deno.importMap": "./Backend/supabase/functions/import_map.json",
+  "deno.lint": true
+}

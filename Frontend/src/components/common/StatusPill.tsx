@@ -5,12 +5,25 @@ import { theme } from '../../theme/theme';
 interface StatusPillProps {
     status: string;
     location: string;
+    variant?: 'wfo' | 'wfh' | 'holiday' | 'leave' | 'absent';
 }
 
-export const StatusPill: React.FC<StatusPillProps> = ({ status, location }) => {
+export const StatusPill: React.FC<StatusPillProps> = ({ status, location, variant = 'wfo' }) => {
+    const getStatusColor = () => {
+        switch (variant) {
+            case 'wfo': return theme.colors.success;
+            case 'wfh': return theme.colors.primary; // Purple for WFH
+            case 'holiday': return theme.colors.error;
+            case 'leave': return theme.colors.warning;
+            default: return theme.colors.text.secondary;
+        }
+    };
+
+    const color = getStatusColor();
+
     return (
         <View style={styles.container}>
-            <View style={styles.indicator} />
+            <View style={[styles.indicator, { backgroundColor: color }]} />
             <View>
                 <Text style={styles.status}>{status}</Text>
                 <Text style={styles.location}>{location}</Text>
@@ -38,7 +51,6 @@ const styles = StyleSheet.create({
         width: 12,
         height: 12,
         borderRadius: 6,
-        backgroundColor: theme.colors.success,
         marginRight: theme.spacing.s,
     },
     status: {
