@@ -25,9 +25,7 @@ export const useAttendance = () => {
             // Fetch weekly stats
             const { data: weeklyData } = await getWeeklyAttendance(7);
             setWeeklyLogs(weeklyData || []);
-        } catch (error) {
-            console.error('Attendance fetch error:', error);
-        }
+        } catch (_error) {}
     }, [user?.id, isProfileComplete]);
 
     const refresh = async () => {

@@ -6,13 +6,13 @@ import { GEOFENCE_TASK } from './BackgroundTasks';
 export const requestPermissions = async () => {
     const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
     if (fgStatus !== 'granted') {
-        Alert.alert('Permission Denied', 'Allow location access to enable auto-attendance.');
+        Alert.alert('Location Required', 'Allow location access so OfficeOrbit can verify office check-ins.');
         return false;
     }
 
     const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
     if (bgStatus !== 'granted') {
-        Alert.alert('Background Permission Required', 'Select "Allow all the time" for automatic check-in.');
+        Alert.alert('Background Access Required', 'Select "Allow all the time" if you want automatic office check-in.');
         return false;
     }
     return true;
@@ -25,7 +25,6 @@ export const startBackgroundUpdate = async () => {
     try {
         const isRegistered = await TaskManager.isTaskRegisteredAsync(GEOFENCE_TASK);
         if (isRegistered) {
-            console.log('Background task already running');
             return;
         }
 
@@ -39,7 +38,6 @@ export const startBackgroundUpdate = async () => {
                 notificationBody: "Monitoring location for auto-attendance.",
             }
         });
-        console.log('Background location tracking started');
     } catch (error) {
         console.error('Error starting background location:', error);
     }
@@ -50,7 +48,6 @@ export const stopBackgroundUpdate = async () => {
         const isRegistered = await TaskManager.isTaskRegisteredAsync(GEOFENCE_TASK);
         if (isRegistered) {
             await Location.stopLocationUpdatesAsync(GEOFENCE_TASK);
-            console.log('Background location tracking stopped');
         }
     } catch (error) {
         console.error('Error stopping background location:', error);

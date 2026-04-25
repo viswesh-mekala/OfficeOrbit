@@ -57,8 +57,6 @@ export const signInWithGoogle = async () => {
             path: 'auth/callback',
         });
 
-        console.log('[Auth] Google OAuth redirect URL:', redirectUrl);
-
         const { data, error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
@@ -73,8 +71,6 @@ export const signInWithGoogle = async () => {
             const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
 
             if (result.type === 'success' && result.url) {
-                console.log('[Auth] OAuth callback URL received');
-
                 // Parse hash fragment manually — new URL() crashes on custom schemes
                 const hashIndex = result.url.indexOf('#');
                 if (hashIndex === -1) {
@@ -102,9 +98,8 @@ export const signInWithGoogle = async () => {
             }
         }
 
-        return { error: null };
+        return { error: new Error('Google sign-in could not be started. Please try again.') };
     } catch (error: any) {
-        console.error('[Auth] Google sign-in error:', error.message);
         return { error: new Error(friendlyErrorMessage(error.message || 'Google sign in failed')) };
     }
 };
@@ -135,9 +130,7 @@ export const resendOtp = async (email: string) => {
 export const signOutUser = async () => {
     try {
         await supabase.auth.signOut();
-    } catch (err) {
-        console.error('Sign out error:', err);
-    }
+    } catch (_err) {}
 };
 
 // ── Session helpers ──

@@ -40,7 +40,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     // ── Clear stale session (local state + service) ──
     const clearStaleSession = async () => {
-        console.log('Clearing stale session...');
         await authService.forceSignOut();
         setUser(null);
         setSession(null);
@@ -58,8 +57,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             } else {
                 setProfile(result.data);
             }
-        } catch (error) {
-            console.error('Error fetching profile:', error);
         } finally {
             setProfileLoading(false);
         }

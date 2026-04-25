@@ -316,12 +316,10 @@ export const Onboarding: React.FC = () => {
                 } else {
                     await searchLocationFallback(query, requestId);
                 }
-            } catch (err) {
-                console.error('Places autocomplete error:', err);
+            } catch (_err) {
                 try {
                     await searchLocationFallback(query, requestId);
-                } catch (fallbackErr) {
-                    console.error('Fallback geocoding error:', fallbackErr);
+                } catch (_fallbackErr) {
                     if (requestId === searchSequenceRef.current) {
                         setLocationResults([]);
                     }
@@ -367,8 +365,7 @@ export const Onboarding: React.FC = () => {
             setLocationResults([]);
             setErrors((prev) => ({ ...prev, location: '' }));
             placesSessionTokenRef.current = `officeorbit-${Date.now()}`;
-        } catch (err) {
-            console.error('Place details error:', err);
+        } catch (_err) {
             Alert.alert(
                 'Location search unavailable',
                 'We could not load the full place details for that office. Please try another suggestion.',

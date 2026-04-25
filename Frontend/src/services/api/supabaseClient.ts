@@ -32,6 +32,13 @@ const createStubAuth = () => ({
   resend: async () => ({ error: new Error('Supabase not initialized') }),
 });
 
+const createStubFunctions = () => ({
+  invoke: async () => ({
+    data: null,
+    error: new Error('Supabase not initialized'),
+  }),
+});
+
 if (supabaseUrl && supabaseAnonKey) {
   try {
     supabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -47,7 +54,7 @@ if (supabaseUrl && supabaseAnonKey) {
     // and log the error for easier debugging in production.
     // eslint-disable-next-line no-console
     console.error('[Supabase] Initialization failed:', err);
-    supabase = { auth: createStubAuth() };
+    supabase = { auth: createStubAuth(), functions: createStubFunctions() };
   }
 } else {
   // Missing env vars — do not crash on import. Log to help diagnosis.
@@ -55,7 +62,7 @@ if (supabaseUrl && supabaseAnonKey) {
   console.error(
     '[Supabase] Missing EXPO_PUBLIC_SUPABASE_URL or EXPO_PUBLIC_SUPABASE_ANON_KEY',
   );
-  supabase = { auth: createStubAuth() };
+  supabase = { auth: createStubAuth(), functions: createStubFunctions() };
 }
 
 export { supabase };

@@ -39,14 +39,11 @@ TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }: any) => {
         
         if (!location) return;
 
-        console.log('[Background] Location Update:', location.coords);
-
         try {
             // 1. Get User Profile via API (no direct DB access)
             const { data: profile, error: profileError } = await callApi('profile-get');
 
             if (profileError || !profile?.company_location) {
-                console.log('[Background] No profile or company location set.');
                 return;
             }
 
@@ -57,7 +54,6 @@ TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }: any) => {
             const endHour = parseHour(profile.office_window_end) ?? 20;
 
             if (currentHour < startHour || currentHour > endHour) {
-                console.log(`[Background] Outside monitoring hours (${startHour}-${endHour}).`);
                 return;
             }
 
@@ -71,14 +67,11 @@ TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }: any) => {
                 officeLng
             );
 
-            console.log(`[Background] Distance to Office: ${Math.round(distance)}m`);
-
             // 4. Check Today's Log via API (no direct DB access)
             const { data: todayLog } = await callApi('attendance-today');
 
             // Skip on holidays/leave
             if (todayLog && (todayLog.status === 'holiday' || todayLog.status === 'leave')) {
-                console.log('[Background] Holiday/Leave marked. Skipping auto-check-in.');
                 return;
             }
 
@@ -87,8 +80,6 @@ TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }: any) => {
             if (distance <= RADIUS_METERS) {
                 // INSIDE geofence
                 if (!todayLog) {
-                    console.log('[Background] Inside Geofence. Attempting Auto-Check-In...');
-                    
                     const { error: checkInError } = await clockIn('present', {
                         latitude: location.coords.latitude,
                         longitude: location.coords.longitude,
@@ -98,7 +89,6 @@ TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }: any) => {
                     if (checkInError) {
                         console.error('[Background] Auto-Check-In Failed:', checkInError.message);
                     } else {
-                        console.log('[Background] Auto-Check-In Successful');
                         await Notifications.scheduleNotificationAsync({
                             content: {
                                 title: "📍 You've arrived!",
@@ -112,7 +102,6 @@ TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }: any) => {
                 // OUTSIDE geofence
                 if (todayLog && !todayLog.check_out && todayLog.status === 'present') {
                     // Future: Debounced auto-checkout logic
-                    console.log('[Background] User left office perimeter.');
                 }
             }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     View,
     Text,
@@ -11,17 +11,25 @@ import {
     Alert,
     ActivityIndicator,
     Dimensions,
+    Keyboard,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as Location from 'expo-location';
 import { theme } from '../../theme/theme';
 import { Button } from '../../components/common/Button';
 import { useAuth } from '../../store/AuthContext';
 import { CompanyLocation } from '../../types/auth.types';
 import { parseTimeToDate, formatTimeDisplay, formatTimeForDB, formatTime } from '../../utils/time';
+import {
+    fetchPlaceDetails,
+    isGooglePlacesConfigured,
+    PlaceSuggestion,
+    searchPlaceSuggestions,
+} from '../../services/googlePlaces';
 
 const { width } = Dimensions.get('window');
 
@@ -114,14 +122,21 @@ const WFH_PERIODS = [
    PROFILE PAGE
    ═══════════════════════════════════════════════════════ */
 export const Profile: React.FC = () => {
-    const { profile, user, updateProfile, signOut, refreshProfile } = useAuth();
+    const { profile, user, updateProfile, signOut } = useAuth();
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const scrollRef = useRef<ScrollView>(null);
+    const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const searchSequenceRef = useRef(0);
+    const placesSessionTokenRef = useRef(`officeorbit-profile-${Date.now()}`);
 
     // Edit form state
     const [username, setUsername] = useState('');
     const [company, setCompany] = useState('');
     const [companyLocation, setCompanyLocation] = useState('');
+    const [selectedLocation, setSelectedLocation] = useState<CompanyLocation | null>(null);
+    const [locationResults, setLocationResults] = useState<PlaceSuggestion[]>([]);
+    const [isSearchingLocation, setIsSearchingLocation] = useState(false);
     const [officeStart, setOfficeStart] = useState(new Date());
     const [officeEnd, setOfficeEnd] = useState(new Date());
     const [minimumLoginTime, setMinimumLoginTime] = useState('');
@@ -129,6 +144,7 @@ export const Profile: React.FC = () => {
     const [wfhPeriod, setWfhPeriod] = useState<'week' | 'month'>('week');
     const [showStartPicker, setShowStartPicker] = useState(false);
     const [showEndPicker, setShowEndPicker] = useState(false);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
 
     // Initialize form from profile
     useEffect(() => {
@@ -136,6 +152,8 @@ export const Profile: React.FC = () => {
             setUsername(profile.username || '');
             setCompany(profile.company || '');
             setCompanyLocation(profile.company_location?.address || '');
+            setSelectedLocation(profile.company_location || null);
+            setLocationResults([]);
             setOfficeStart(parseTimeToDate(profile.office_window_start));
             setOfficeEnd(parseTimeToDate(profile.office_window_end));
             setMinimumLoginTime(
@@ -148,6 +166,29 @@ export const Profile: React.FC = () => {
         }
     }, [profile]);
 
+    useEffect(() => {
+        const showSub = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+            (event) => setKeyboardHeight(event.endCoordinates.height),
+        );
+        const hideSub = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+            () => setKeyboardHeight(0),
+        );
+
+        return () => {
+            showSub.remove();
+            hideSub.remove();
+            if (searchTimeoutRef.current) {
+                clearTimeout(searchTimeoutRef.current);
+            }
+        };
+    }, []);
+
+    const scrollToY = (y: number) => {
+        setTimeout(() => scrollRef.current?.scrollTo({ y, animated: true }), 120);
+    };
+
     const handleEdit = () => setIsEditing(true);
 
     const handleCancel = () => {
@@ -155,6 +196,8 @@ export const Profile: React.FC = () => {
             setUsername(profile.username || '');
             setCompany(profile.company || '');
             setCompanyLocation(profile.company_location?.address || '');
+            setSelectedLocation(profile.company_location || null);
+            setLocationResults([]);
             setOfficeStart(parseTimeToDate(profile.office_window_start));
             setOfficeEnd(parseTimeToDate(profile.office_window_end));
             setMinimumLoginTime(
@@ -168,9 +211,148 @@ export const Profile: React.FC = () => {
         setIsEditing(false);
     };
 
+    const searchLocationFallback = async (query: string, requestId: number) => {
+        const coords = await Location.geocodeAsync(query);
+        const reverseResults = await Promise.all(
+            coords.slice(0, 5).map(async (coord: Location.LocationGeocodedLocation, index: number) => {
+                const addresses = await Location.reverseGeocodeAsync({
+                    latitude: coord.latitude,
+                    longitude: coord.longitude,
+                });
+                const firstAddress = addresses[0] || {};
+                const fullText = [
+                    firstAddress.name,
+                    firstAddress.street,
+                    firstAddress.city,
+                    firstAddress.region,
+                    firstAddress.country,
+                ]
+                    .filter(Boolean)
+                    .join(', ');
+
+                return {
+                    id: `profile-fallback-${requestId}-${index}`,
+                    placeResourceName: '',
+                    primaryText: firstAddress.name || firstAddress.street || query,
+                    secondaryText: [
+                        firstAddress.city,
+                        firstAddress.region,
+                        firstAddress.country,
+                    ]
+                        .filter(Boolean)
+                        .join(', '),
+                    fullText: fullText || query,
+                    latitude: coord.latitude,
+                    longitude: coord.longitude,
+                };
+            }),
+        );
+
+        if (requestId === searchSequenceRef.current) {
+            setLocationResults(reverseResults as PlaceSuggestion[]);
+        }
+    };
+
+    const handleLocationSearch = (query: string) => {
+        setCompanyLocation(query);
+        setSelectedLocation(null);
+
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
+
+        if (query.trim().length < 3) {
+            setLocationResults([]);
+            setIsSearchingLocation(false);
+            return;
+        }
+
+        searchTimeoutRef.current = setTimeout(async () => {
+            const requestId = searchSequenceRef.current + 1;
+            searchSequenceRef.current = requestId;
+            setIsSearchingLocation(true);
+
+            try {
+                if (isGooglePlacesConfigured()) {
+                    const suggestions = await searchPlaceSuggestions(
+                        query,
+                        placesSessionTokenRef.current,
+                    );
+
+                    if (requestId === searchSequenceRef.current) {
+                        setLocationResults(suggestions);
+                    }
+                } else {
+                    await searchLocationFallback(query, requestId);
+                }
+            } catch (_error) {
+                try {
+                    await searchLocationFallback(query, requestId);
+                } catch (_fallbackError) {
+                    if (requestId === searchSequenceRef.current) {
+                        setLocationResults([]);
+                    }
+                }
+            } finally {
+                if (requestId === searchSequenceRef.current) {
+                    setIsSearchingLocation(false);
+                }
+            }
+        }, 250);
+    };
+
+    const handleLocationSelect = async (result: PlaceSuggestion & Partial<CompanyLocation>) => {
+        setIsSearchingLocation(true);
+
+        try {
+            let resolvedLocation: CompanyLocation;
+
+            if (result.placeResourceName) {
+                const details = await fetchPlaceDetails(
+                    result.placeResourceName,
+                    placesSessionTokenRef.current,
+                );
+                resolvedLocation = {
+                    latitude: details.latitude,
+                    longitude: details.longitude,
+                    address: details.address,
+                };
+            } else if (
+                typeof result.latitude === 'number' &&
+                typeof result.longitude === 'number'
+            ) {
+                resolvedLocation = {
+                    latitude: result.latitude,
+                    longitude: result.longitude,
+                    address: result.fullText || companyLocation,
+                };
+            } else {
+                throw new Error('Unable to resolve selected location');
+            }
+
+            setSelectedLocation(resolvedLocation);
+            setCompanyLocation(resolvedLocation.address);
+            setLocationResults([]);
+            placesSessionTokenRef.current = `officeorbit-profile-${Date.now()}`;
+            Keyboard.dismiss();
+        } catch (_error) {
+            Alert.alert(
+                'Location search unavailable',
+                'We could not load that office location fully. Please try another suggestion.',
+            );
+        } finally {
+            setIsSearchingLocation(false);
+        }
+    };
+
     const handleSave = async () => {
         if (!username.trim() || !company.trim() || !companyLocation.trim()) {
             Alert.alert('Required Fields', 'Please fill in all required fields.');
+            return;
+        }
+
+        if (!selectedLocation) {
+            Alert.alert('Select location', 'Please choose your office from the location suggestions.');
             return;
         }
 
@@ -180,9 +362,7 @@ export const Profile: React.FC = () => {
         const { error } = await updateProfile({
             username: username.trim(),
             company: company.trim(),
-            company_location: profile?.company_location
-                ? { ...profile.company_location, address: companyLocation.trim() }
-                : undefined, // Don't save 0,0 coordinates — leave as null
+            company_location: selectedLocation,
             office_window_start: formatTimeForDB(officeStart),
             office_window_end: formatTimeForDB(officeEnd),
             minimum_login_time_minutes: loginTimeMinutes,
@@ -229,7 +409,11 @@ export const Profile: React.FC = () => {
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
             >
                 <ScrollView
-                    contentContainerStyle={styles.scrollContent}
+                    ref={scrollRef}
+                    contentContainerStyle={[
+                        styles.scrollContent,
+                        { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 48 : 40 },
+                    ]}
                     showsVerticalScrollIndicator={false}
                     keyboardShouldPersistTaps="handled"
                 >
@@ -248,10 +432,12 @@ export const Profile: React.FC = () => {
                             {!isEditing ? (
                                 <TouchableOpacity style={styles.editBtnFloat} onPress={handleEdit}>
                                     <Ionicons name="create-outline" size={18} color="#FFF" />
+                                    <Text style={styles.editBtnLabel}>Edit Profile</Text>
                                 </TouchableOpacity>
                             ) : (
                                 <TouchableOpacity style={styles.editBtnFloat} onPress={handleCancel}>
                                     <Ionicons name="close" size={18} color="#FFF" />
+                                    <Text style={styles.editBtnLabel}>Cancel</Text>
                                 </TouchableOpacity>
                             )}
                         </LinearGradient>
@@ -341,6 +527,7 @@ export const Profile: React.FC = () => {
                                             onChangeText={setUsername}
                                             placeholder="Your name"
                                             placeholderTextColor="#CCC"
+                                            onFocus={() => scrollToY(220)}
                                         />
                                     </View>
                                 </View>
@@ -364,6 +551,7 @@ export const Profile: React.FC = () => {
                                             onChangeText={setCompany}
                                             placeholder="e.g. Google"
                                             placeholderTextColor="#CCC"
+                                            onFocus={() => scrollToY(320)}
                                         />
                                     </View>
                                 </View>
@@ -376,11 +564,59 @@ export const Profile: React.FC = () => {
                                         <TextInput
                                             style={styles.editInput}
                                             value={companyLocation}
-                                            onChangeText={setCompanyLocation}
-                                            placeholder="e.g. Bangalore, HSR Layout"
+                                            onChangeText={handleLocationSearch}
+                                            placeholder="Search office address or company campus..."
                                             placeholderTextColor="#CCC"
+                                            onFocus={() => scrollToY(400)}
                                         />
+                                        {isSearchingLocation && (
+                                            <ActivityIndicator size="small" color={theme.colors.primary} />
+                                        )}
                                     </View>
+                                    {locationResults.length > 0 && (
+                                        <View style={styles.locationResults}>
+                                            {locationResults.map((result) => (
+                                                <TouchableOpacity
+                                                    key={result.id}
+                                                    style={styles.locationResultItem}
+                                                    onPress={() => void handleLocationSelect(result as PlaceSuggestion & Partial<CompanyLocation>)}
+                                                >
+                                                    <Ionicons name="location" size={16} color={theme.colors.primary} />
+                                                    <View style={styles.locationResultCopy}>
+                                                        <Text style={styles.locationResultPrimary} numberOfLines={1}>
+                                                            {result.primaryText || 'Unknown location'}
+                                                        </Text>
+                                                        {!!result.secondaryText && (
+                                                            <Text style={styles.locationResultSecondary} numberOfLines={2}>
+                                                                {result.secondaryText}
+                                                            </Text>
+                                                        )}
+                                                    </View>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+                                    )}
+                                    {selectedLocation && (
+                                        <View style={styles.selectedLocation}>
+                                            <View style={styles.selectedLocationIcon}>
+                                                <Ionicons name="checkmark-circle" size={16} color="#4CAF50" />
+                                            </View>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.selectedLocationTitle}>Office pinned</Text>
+                                                <Text style={styles.selectedLocationAddress} numberOfLines={2}>
+                                                    {selectedLocation.address}
+                                                </Text>
+                                            </View>
+                                            <TouchableOpacity
+                                                onPress={() => {
+                                                    setSelectedLocation(null);
+                                                    setCompanyLocation('');
+                                                }}
+                                            >
+                                                <Ionicons name="close-circle" size={20} color="#CCC" />
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
                                 </View>
                             </View>
 
@@ -445,6 +681,7 @@ export const Profile: React.FC = () => {
                                             placeholder="e.g. 8"
                                             placeholderTextColor="#CCC"
                                             keyboardType="numeric"
+                                            onFocus={() => scrollToY(620)}
                                         />
                                     </View>
                                 </View>
@@ -467,6 +704,7 @@ export const Profile: React.FC = () => {
                                             placeholder="Number of days"
                                             placeholderTextColor="#CCC"
                                             keyboardType="numeric"
+                                            onFocus={() => scrollToY(780)}
                                         />
                                     </View>
                                 </View>
@@ -554,12 +792,19 @@ const styles = StyleSheet.create({
         position: 'absolute',
         top: Platform.OS === 'ios' ? 54 : 40,
         right: 20,
-        width: 40,
-        height: 40,
-        borderRadius: 20,
+        minWidth: 82,
+        height: 46,
+        borderRadius: 23,
         backgroundColor: 'rgba(255,255,255,0.2)',
         alignItems: 'center',
         justifyContent: 'center',
+        paddingHorizontal: 10,
+        gap: 2,
+    },
+    editBtnLabel: {
+        fontSize: 10,
+        color: '#FFF',
+        fontWeight: '700',
     },
 
     /* ── Avatar ── */
@@ -821,6 +1066,64 @@ const styles = StyleSheet.create({
         color: '#1A1A2E',
         fontWeight: '500',
         height: '100%',
+    },
+    locationResults: {
+        marginTop: 8,
+        backgroundColor: '#FFF',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#EDEDF5',
+        overflow: 'hidden',
+    },
+    locationResultItem: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 10,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F5F5FA',
+    },
+    locationResultCopy: {
+        flex: 1,
+    },
+    locationResultPrimary: {
+        fontSize: 13,
+        color: '#333',
+        fontWeight: '600',
+    },
+    locationResultSecondary: {
+        fontSize: 12,
+        color: '#777',
+        marginTop: 3,
+        lineHeight: 17,
+    },
+    selectedLocation: {
+        marginTop: 10,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        backgroundColor: '#F0FFF4',
+        borderRadius: 14,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: '#C8E6C9',
+    },
+    selectedLocationIcon: {
+        marginRight: -4,
+    },
+    selectedLocationTitle: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#4CAF50',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    selectedLocationAddress: {
+        fontSize: 13,
+        color: '#333',
+        fontWeight: '500',
+        marginTop: 2,
     },
 
     /* ── Time Pickers ── */

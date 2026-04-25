@@ -24,7 +24,6 @@ export const fetchUserProfile = async (
             msg.includes('jwt') ||
             msg.includes('token')
         ) {
-            console.warn('[Auth] Session invalid, clearing...');
             return { data: null, error: null, shouldClearSession: true };
         }
 

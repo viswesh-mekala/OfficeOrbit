@@ -1,68 +1,184 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, FlatList, Platform, KeyboardAvoidingView } from 'react-native';
+import React, { useCallback, useMemo, useState } from 'react';
+import {
+    View,
+    Text,
+    StyleSheet,
+    ScrollView,
+    TouchableOpacity,
+    Alert,
+    FlatList,
+    Platform,
+    KeyboardAvoidingView,
+    RefreshControl,
+    ActivityIndicator,
+    Share,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { theme } from '../../theme/theme';
 import { Input } from '../../components/common/Input';
 import { Button } from '../../components/common/Button';
 import { Card } from '../../components/common/Card';
 import { Avatar } from '../../components/common/Avatar';
+import { createTeam, getTeam, joinTeam, leaveTeam } from '../../services/teamService';
+import { TeamAttendanceStatus, TeamGetResponse, TeamMember } from '../../types/team.types';
 
-// Mock data types
-interface TeamMember {
-    id: string;
-    name: string;
-    role: 'Admin' | 'Member';
-    isOnline: boolean;
-    imageUrl?: string;
-}
-
-interface TeamData {
-    name: string;
-    code: string;
-    members: TeamMember[];
-}
+const getStatusPresentation = (status: TeamAttendanceStatus) => {
+    switch (status) {
+        case 'office':
+            return {
+                label: 'Office',
+                backgroundColor: '#E8F5E9',
+                textColor: theme.colors.success,
+            };
+        case 'home':
+            return {
+                label: 'Home',
+                backgroundColor: '#FFF3E0',
+                textColor: theme.colors.warning,
+            };
+        default:
+            return {
+                label: 'Not checked in',
+                backgroundColor: '#EEF2F7',
+                textColor: '#6B7280',
+            };
+    }
+};
 
 export const TeamPage: React.FC = () => {
-    const [isInTeam, setIsInTeam] = useState(false);
     const [joinCode, setJoinCode] = useState('');
     const [teamName, setTeamName] = useState('');
+    const [teamState, setTeamState] = useState<TeamGetResponse>({ team: null, members: [] });
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
+    const [joinLoading, setJoinLoading] = useState(false);
+    const [createLoading, setCreateLoading] = useState(false);
+    const [leaveLoading, setLeaveLoading] = useState(false);
 
-    // Mock team data
-    const [team, setTeam] = useState<TeamData>({
-        name: "Engineering Squad",
-        code: "ENG-2024",
-        members: [
-            { id: '1', name: 'Viswesh Nani', role: 'Admin', isOnline: true },
-            { id: '2', name: 'Sarah Smith', role: 'Member', isOnline: true },
-            { id: '3', name: 'John Doe', role: 'Member', isOnline: false },
-            { id: '4', name: 'Mike Ross', role: 'Member', isOnline: true },
-        ]
-    });
+    const isInTeam = Boolean(teamState.team);
+    const officeCount = useMemo(
+        () => teamState.members.filter((member) => member.attendanceStatus === 'office').length,
+        [teamState.members],
+    );
+    const homeCount = useMemo(
+        () => teamState.members.filter((member) => member.attendanceStatus === 'home').length,
+        [teamState.members],
+    );
 
-    const handleJoinTeam = () => {
+    const loadTeam = useCallback(async (isPullToRefresh = false) => {
+        if (isPullToRefresh) {
+            setRefreshing(true);
+        } else {
+            setLoading(true);
+        }
+
+        const { data, error } = await getTeam();
+
+        if (error) {
+            Alert.alert('Unable to load team', error.message);
+        } else if (data) {
+            setTeamState(data);
+        }
+
+        setLoading(false);
+        setRefreshing(false);
+    }, []);
+
+    useFocusEffect(
+        useCallback(() => {
+            void loadTeam();
+        }, [loadTeam]),
+    );
+
+    const handleJoinTeam = async () => {
         if (!joinCode.trim()) {
-            Alert.alert("Error", "Please enter a team code");
+            Alert.alert('Error', 'Please enter a team code');
             return;
         }
-        // Simulate API call
-        setIsInTeam(true);
+
+        setJoinLoading(true);
+        const { error } = await joinTeam(joinCode.trim().toUpperCase());
+        setJoinLoading(false);
+
+        if (error) {
+            Alert.alert('Unable to join team', error.message);
+            return;
+        }
+
+        setJoinCode('');
+        await loadTeam();
     };
 
-    const handleCreateTeam = () => {
+    const handleCreateTeam = async () => {
         if (!teamName.trim()) {
-            Alert.alert("Error", "Please enter a team name");
+            Alert.alert('Error', 'Please enter a team name');
             return;
         }
-        // Simulate creation
-        setIsInTeam(true);
+
+        setCreateLoading(true);
+        const { error } = await createTeam(teamName.trim());
+        setCreateLoading(false);
+
+        if (error) {
+            Alert.alert('Unable to create team', error.message);
+            return;
+        }
+
+        setTeamName('');
+        await loadTeam();
+    };
+
+    const handleCopyCode = async () => {
+        if (!teamState.team?.code) return;
+        await Share.share({
+            message: `Join my OfficeOrbit team with code: ${teamState.team.code}`,
+        });
+    };
+
+    const confirmLeaveTeam = () => {
+        Alert.alert(
+            'Leave Team',
+            'You will leave this team immediately. You can still join or create another team later.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Leave',
+                    style: 'destructive',
+                    onPress: () => {
+                        void handleLeaveTeam();
+                    },
+                },
+            ],
+        );
+    };
+
+    const handleLeaveTeam = async () => {
+        setLeaveLoading(true);
+        const { error } = await leaveTeam();
+        setLeaveLoading(false);
+
+        if (error) {
+            Alert.alert('Unable to leave team', error.message);
+            return;
+        }
+
+        setTeamState({ team: null, members: [] });
     };
 
     const renderNoTeamView = () => (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+            contentContainerStyle={styles.scrollContent}
+            refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={() => void loadTeam(true)} />
+            }
+        >
             <View style={styles.header}>
                 <Text style={styles.title}>Team Collaboration</Text>
-                <Text style={styles.subtitle}>Join an existing team or create a new one to start tracking together.</Text>
+                <Text style={styles.subtitle}>
+                    Join an existing team with a code or create a new one so everyone can see who is in office today.
+                </Text>
             </View>
 
             <View style={styles.actionContainer}>
@@ -71,7 +187,7 @@ export const TeamPage: React.FC = () => {
                         <Ionicons name="people" size={32} color={theme.colors.primary} />
                     </View>
                     <Text style={styles.cardTitle}>Join a Team</Text>
-                    <Text style={styles.cardDesc}>Enter the unique code shared by your team admin.</Text>
+                    <Text style={styles.cardDesc}>Enter the team code shared by your teammates.</Text>
 
                     <Input
                         placeholder="Enter Team Code"
@@ -79,7 +195,7 @@ export const TeamPage: React.FC = () => {
                         onChangeText={setJoinCode}
                         autoCapitalize="characters"
                     />
-                    <Button title="Join Team" onPress={handleJoinTeam} />
+                    <Button title="Join Team" onPress={handleJoinTeam} loading={joinLoading} />
                 </Card>
 
                 <View style={styles.divider}>
@@ -89,11 +205,11 @@ export const TeamPage: React.FC = () => {
                 </View>
 
                 <Card style={styles.actionCard}>
-                    <View style={[styles.iconContainer, { backgroundColor: '#E0F2F1' }]}>
-                        <Ionicons name="add-circle" size={32} color="#00897B" />
+                    <View style={[styles.iconContainer, { backgroundColor: '#E8F5E9' }]}>
+                        <Ionicons name="add-circle" size={32} color={theme.colors.success} />
                     </View>
                     <Text style={styles.cardTitle}>Create a Team</Text>
-                    <Text style={styles.cardDesc}>Start a new organization and invite members.</Text>
+                    <Text style={styles.cardDesc}>Start a team and share the generated code with others.</Text>
 
                     <Input
                         placeholder="Team Name"
@@ -104,13 +220,38 @@ export const TeamPage: React.FC = () => {
                         title="Create New Team"
                         variant="secondary"
                         onPress={handleCreateTeam}
-                        style={{ backgroundColor: theme.colors.white, borderWidth: 1, borderColor: theme.colors.primary }}
-                        textStyle={{ color: theme.colors.primary }}
+                        loading={createLoading}
+                        style={styles.secondaryButton}
+                        textStyle={styles.secondaryButtonText}
                     />
                 </Card>
             </View>
         </ScrollView>
     );
+
+    const renderMember = ({ item }: { item: TeamMember }) => {
+        const status = getStatusPresentation(item.attendanceStatus);
+
+        return (
+            <View style={styles.memberItem}>
+                <View style={styles.memberInfo}>
+                    <Avatar name={item.name} size={46} />
+                    <View style={styles.nameContainer}>
+                        <View style={styles.memberHeaderRow}>
+                            <Text style={styles.memberName}>{item.name}</Text>
+                            {item.isCurrentUser && <Text style={styles.youTag}>You</Text>}
+                        </View>
+                        <Text style={styles.memberEmail} numberOfLines={1}>{item.email}</Text>
+                    </View>
+                </View>
+                <View style={[styles.statusBadge, { backgroundColor: status.backgroundColor }]}>
+                    <Text style={[styles.statusBadgeText, { color: status.textColor }]}>
+                        {status.label}
+                    </Text>
+                </View>
+            </View>
+        );
+    };
 
     const renderTeamDashboard = () => (
         <View style={styles.dashboardContainer}>
@@ -119,62 +260,75 @@ export const TeamPage: React.FC = () => {
                 style={styles.teamHeader}
             >
                 <View style={styles.headerContent}>
-                    <View>
-                        <Text style={styles.teamName}>{team.name}</Text>
-                        <View style={styles.codeContainer}>
-                            <Text style={styles.codeLabel}>Team Code:</Text>
-                            <TouchableOpacity style={styles.codeBox}>
-                                <Text style={styles.codeText}>{team.code}</Text>
-                                <Ionicons name="copy-outline" size={16} color="white" />
-                            </TouchableOpacity>
-                        </View>
+                    <View style={styles.teamMeta}>
+                        <Text style={styles.teamName}>{teamState.team?.name}</Text>
+                        <TouchableOpacity style={styles.codeBox} onPress={handleCopyCode} activeOpacity={0.85}>
+                            <Text style={styles.codeText}>{teamState.team?.code}</Text>
+                            <Ionicons name="copy-outline" size={16} color="white" />
+                        </TouchableOpacity>
                     </View>
-                    <View style={styles.statsContainer}>
-                        <View style={styles.statItem}>
-                            <Text style={styles.statValue}>{team.members.length}</Text>
-                            <Text style={styles.statLabel}>Members</Text>
-                        </View>
-                        <View style={styles.separator} />
-                        <View style={styles.statItem}>
-                            <Text style={styles.statValue}>
-                                {team.members.filter(m => m.isOnline).length}
-                            </Text>
-                            <Text style={styles.statLabel}>Online</Text>
-                        </View>
+                    <TouchableOpacity style={styles.refreshButton} onPress={() => void loadTeam()}>
+                        <Ionicons name="refresh" size={18} color="#FFF" />
+                    </TouchableOpacity>
+                </View>
+
+                <View style={styles.statsRow}>
+                    <View style={styles.statCard}>
+                        <Text style={styles.statValue}>{teamState.members.length}</Text>
+                        <Text style={styles.statLabel}>Members</Text>
+                    </View>
+                    <View style={styles.statCard}>
+                        <Text style={styles.statValue}>{officeCount}</Text>
+                        <Text style={styles.statLabel}>Office</Text>
+                    </View>
+                    <View style={styles.statCard}>
+                        <Text style={styles.statValue}>{homeCount}</Text>
+                        <Text style={styles.statLabel}>Home</Text>
                     </View>
                 </View>
             </LinearGradient>
 
-            <View style={styles.listContainer}>
-                <Text style={styles.sectionTitle}>Team Members</Text>
-                <FlatList
-                    data={team.members}
-                    keyExtractor={item => item.id}
-                    renderItem={({ item }) => (
-                        <View style={styles.memberItem}>
-                            <View style={styles.memberInfo}>
-                                <Avatar
-                                    name={item.name}
-                                    imageUrl={item.imageUrl}
-                                    showOnlineStatus
-                                    isOnline={item.isOnline}
-                                />
-                                <View style={styles.nameContainer}>
-                                    <Text style={styles.memberName}>{item.name}</Text>
-                                    <Text style={styles.memberRole}>{item.role}</Text>
-                                </View>
-                            </View>
-                            <TouchableOpacity>
-                                <Ionicons name="ellipsis-horizontal" size={24} color={theme.colors.text.secondary} />
-                            </TouchableOpacity>
-                        </View>
-                    )}
-                    contentContainerStyle={styles.listContent}
-                    showsVerticalScrollIndicator={false}
-                />
-            </View>
+            <FlatList
+                data={teamState.members}
+                keyExtractor={(item) => item.id}
+                renderItem={renderMember}
+                contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={() => void loadTeam(true)} />
+                }
+                ListHeaderComponent={
+                    <View style={styles.listHeader}>
+                        <Text style={styles.sectionTitle}>Team Members</Text>
+                        <Text style={styles.sectionSubtitle}>
+                            Status refreshes each time you open this tab.
+                        </Text>
+                    </View>
+                }
+                ListFooterComponent={
+                    <View style={styles.footerActions}>
+                        <Button
+                            title="Leave Team"
+                            variant="secondary"
+                            onPress={confirmLeaveTeam}
+                            loading={leaveLoading}
+                            style={styles.leaveButton}
+                            textStyle={styles.leaveButtonText}
+                        />
+                    </View>
+                }
+            />
         </View>
     );
+
+    if (loading) {
+        return (
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={theme.colors.primary} />
+                <Text style={styles.loadingText}>Loading your team...</Text>
+            </View>
+        );
+    }
 
     return (
         <View style={styles.container}>
@@ -194,8 +348,21 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#F8FAFC',
     },
+    loadingContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: theme.spacing.m,
+        backgroundColor: '#F8FAFC',
+    },
+    loadingText: {
+        fontSize: 14,
+        color: theme.colors.text.secondary,
+        fontWeight: '500',
+    },
     scrollContent: {
         padding: theme.spacing.l,
+        paddingBottom: theme.spacing.xxl,
     },
     header: {
         marginTop: theme.spacing.xl,
@@ -203,7 +370,7 @@ const styles = StyleSheet.create({
     },
     title: {
         fontSize: 28,
-        fontWeight: 'bold',
+        fontWeight: '700',
         color: theme.colors.text.primary,
         marginBottom: theme.spacing.s,
     },
@@ -239,6 +406,7 @@ const styles = StyleSheet.create({
         color: theme.colors.text.secondary,
         textAlign: 'center',
         marginBottom: theme.spacing.l,
+        lineHeight: 20,
     },
     divider: {
         flexDirection: 'row',
@@ -255,7 +423,14 @@ const styles = StyleSheet.create({
         color: theme.colors.text.secondary,
         fontWeight: '500',
     },
-    // Dashboard Styles
+    secondaryButton: {
+        backgroundColor: theme.colors.white,
+        borderWidth: 1,
+        borderColor: theme.colors.primary,
+    },
+    secondaryButtonText: {
+        color: theme.colors.primary,
+    },
     dashboardContainer: {
         flex: 1,
     },
@@ -263,110 +438,159 @@ const styles = StyleSheet.create({
         paddingTop: 60,
         paddingBottom: theme.spacing.xl,
         paddingHorizontal: theme.spacing.l,
-        borderBottomLeftRadius: 30,
-        borderBottomRightRadius: 30,
+        borderBottomLeftRadius: 28,
+        borderBottomRightRadius: 28,
     },
     headerContent: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        gap: theme.spacing.m,
+    },
+    teamMeta: {
+        flex: 1,
     },
     teamName: {
         fontSize: 24,
-        fontWeight: 'bold',
+        fontWeight: '700',
         color: 'white',
         marginBottom: theme.spacing.s,
     },
-    codeContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: theme.spacing.s,
-    },
-    codeLabel: {
-        color: 'rgba(255,255,255,0.8)',
-        fontSize: 14,
-    },
     codeBox: {
+        alignSelf: 'flex-start',
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.2)',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 8,
-        gap: 4,
+        backgroundColor: 'rgba(255,255,255,0.18)',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 10,
+        gap: 6,
     },
     codeText: {
         color: 'white',
         fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
         fontWeight: '600',
     },
-    statsContainer: {
-        flexDirection: 'row',
-        backgroundColor: 'rgba(255,255,255,0.15)',
-        padding: 8,
-        borderRadius: 12,
+    refreshButton: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.16)',
         alignItems: 'center',
+        justifyContent: 'center',
     },
-    statItem: {
+    statsRow: {
+        flexDirection: 'row',
+        gap: theme.spacing.s,
+        marginTop: theme.spacing.l,
+    },
+    statCard: {
+        flex: 1,
+        backgroundColor: 'rgba(255,255,255,0.14)',
+        borderRadius: 16,
+        paddingVertical: 12,
         alignItems: 'center',
-        paddingHorizontal: 12,
     },
     statValue: {
         color: 'white',
-        fontSize: 18,
-        fontWeight: 'bold',
+        fontSize: 20,
+        fontWeight: '700',
     },
     statLabel: {
-        color: 'rgba(255,255,255,0.8)',
-        fontSize: 10,
+        color: 'rgba(255,255,255,0.82)',
+        fontSize: 11,
+        marginTop: 4,
+        textTransform: 'uppercase',
     },
-    separator: {
-        width: 1,
-        height: 24,
-        backgroundColor: 'rgba(255,255,255,0.3)',
-    },
-    listContainer: {
-        flex: 1,
-        padding: theme.spacing.l,
+    listHeader: {
+        paddingHorizontal: theme.spacing.l,
+        paddingTop: theme.spacing.l,
+        paddingBottom: theme.spacing.s,
     },
     sectionTitle: {
         fontSize: 18,
         fontWeight: '700',
         color: theme.colors.text.primary,
-        marginBottom: theme.spacing.m,
+    },
+    sectionSubtitle: {
+        marginTop: 4,
+        fontSize: 13,
+        color: theme.colors.text.secondary,
     },
     listContent: {
-        paddingBottom: theme.spacing.xl,
+        paddingBottom: theme.spacing.xxl,
     },
     memberItem: {
+        marginHorizontal: theme.spacing.l,
+        marginBottom: theme.spacing.m,
+        padding: theme.spacing.m,
+        borderRadius: 16,
+        backgroundColor: '#FFF',
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        backgroundColor: 'white',
-        padding: theme.spacing.m,
-        borderRadius: 12,
-        marginBottom: theme.spacing.m,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.05,
-        shadowRadius: 4,
+        shadowRadius: 8,
         elevation: 2,
+        gap: theme.spacing.m,
     },
     memberInfo: {
         flexDirection: 'row',
         alignItems: 'center',
+        flex: 1,
         gap: theme.spacing.m,
     },
     nameContainer: {
-        gap: 2,
+        flex: 1,
+        gap: 3,
+    },
+    memberHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
     },
     memberName: {
         fontSize: 16,
         fontWeight: '600',
         color: theme.colors.text.primary,
     },
-    memberRole: {
+    youTag: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: theme.colors.primary,
+        backgroundColor: '#EEF2FF',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 10,
+    },
+    memberEmail: {
         fontSize: 12,
         color: theme.colors.text.secondary,
+    },
+    statusBadge: {
+        borderRadius: 999,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        minWidth: 96,
+        alignItems: 'center',
+    },
+    statusBadgeText: {
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    footerActions: {
+        paddingHorizontal: theme.spacing.l,
+        paddingTop: theme.spacing.s,
+        gap: theme.spacing.m,
+    },
+    leaveButton: {
+        backgroundColor: theme.colors.white,
+        borderWidth: 1,
+        borderColor: '#F3C6C6',
+    },
+    leaveButtonText: {
+        color: '#D14343',
     },
 });

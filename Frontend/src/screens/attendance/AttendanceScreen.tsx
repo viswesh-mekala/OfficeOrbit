@@ -38,8 +38,7 @@ export const Attendance: React.FC = () => {
             if (!error && data) {
                 setAttendanceLogs(data);
             }
-        } catch (err) {
-            console.error('Failed to fetch attendance:', err);
+        } catch (_err) {
         } finally {
             setLoading(false);
         }

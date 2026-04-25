@@ -42,13 +42,11 @@ export async function callApi<T = any>(
                 if (error.context && typeof error.context.json === 'function') {
                     const errorBody = await error.context.json();
                     detail = errorBody?.error || errorBody?.message || detail;
-                    console.error(`[API] ${functionName} error body:`, errorBody);
                 }
             } catch (_) {
                 // context wasn't readable — use the generic message
             }
 
-            console.error(`[API] ${functionName} failed:`, detail);
             throw new Error(detail);
         }
 
