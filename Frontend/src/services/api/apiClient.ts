@@ -19,21 +19,37 @@ export interface ApiResponse<T> {
 
 export async function callApi<T = any>(
     functionName: string,
-    body?: Record<string, any>
+    body?: Record<string, any>,
+    options: { injectTimezone?: boolean } = { injectTimezone: true }
 ): Promise<ApiResponse<T>> {
     try {
-        const requestBody = {
-            ...(body || {}),
-            timezoneOffset: new Date().getTimezoneOffset(),
-        };
+        const requestBody = { ...(body || {}) };
+        
+        if (options.injectTimezone) {
+            requestBody.timezoneOffset = new Date().getTimezoneOffset();
+        }
 
         const { data, error } = await supabase.functions.invoke(functionName, {
-            body: requestBody,
+            body: Object.keys(requestBody).length > 0 ? requestBody : undefined,
         });
 
-        // Network / Supabase-level error
+        // Network / Supabase-level error (includes non-2xx from Edge Functions)
         if (error) {
-            throw new Error(error.message || 'API request failed');
+            let detail = error.message || 'API request failed';
+            
+            // Extract the real error body from FunctionsHttpError
+            try {
+                if (error.context && typeof error.context.json === 'function') {
+                    const errorBody = await error.context.json();
+                    detail = errorBody?.error || errorBody?.message || detail;
+                    console.error(`[API] ${functionName} error body:`, errorBody);
+                }
+            } catch (_) {
+                // context wasn't readable — use the generic message
+            }
+
+            console.error(`[API] ${functionName} failed:`, detail);
+            throw new Error(detail);
         }
 
         // Edge Function returned an error in the response body

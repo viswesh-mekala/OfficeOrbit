@@ -7,6 +7,7 @@ import {
     TouchableOpacity,
     TextInput,
     KeyboardAvoidingView,
+    Keyboard,
     Platform,
     Alert,
     ActivityIndicator,
@@ -37,6 +38,12 @@ import { theme } from '../../theme/theme';
 import { Button } from '../../components/common/Button';
 import { useAuth } from '../../store/AuthContext';
 import { CompanyLocation } from '../../types/auth.types';
+import {
+    fetchPlaceDetails,
+    isGooglePlacesConfigured,
+    PlaceSuggestion,
+    searchPlaceSuggestions,
+} from '../../services/googlePlaces';
 
 const { width, height } = Dimensions.get('window');
 
@@ -182,11 +189,31 @@ export const Onboarding: React.FC = () => {
     const [step, setStep] = useState(0);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // Keyboard tracking
+    const scrollRef = useRef<ScrollView>(null);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+    useEffect(() => {
+        const showSub = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+            (e) => setKeyboardHeight(e.endCoordinates.height)
+        );
+        const hideSub = Keyboard.addListener(
+            Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+            () => setKeyboardHeight(0)
+        );
+        return () => { showSub.remove(); hideSub.remove(); };
+    }, []);
+
+    const scrollToY = (y: number) => {
+        setTimeout(() => scrollRef.current?.scrollTo({ y, animated: true }), 100);
+    };
+
     // Form state
     const [username, setUsername] = useState(profile?.username || user?.user_metadata?.name || '');
     const [company, setCompany] = useState('');
     const [locationQuery, setLocationQuery] = useState('');
-    const [locationResults, setLocationResults] = useState<Location.LocationGeocodedAddress[]>([]);
+    const [locationResults, setLocationResults] = useState<PlaceSuggestion[]>([]);
     const [selectedLocation, setSelectedLocation] = useState<CompanyLocation | null>(null);
     const [isSearching, setIsSearching] = useState(false);
     const [officeStart, setOfficeStart] = useState(() => {
@@ -201,81 +228,154 @@ export const Onboarding: React.FC = () => {
     const [showStartPicker, setShowStartPicker] = useState(false);
     const [showEndPicker, setShowEndPicker] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
-    const locationPermissionGranted = useRef(false);
+    const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const searchSequenceRef = useRef(0);
+    const placesSessionTokenRef = useRef(`officeorbit-${Date.now()}`);
 
-    // Request location permission once on mount
     useEffect(() => {
-        (async () => {
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            locationPermissionGranted.current = status === 'granted';
-        })();
+        return () => {
+            if (searchTimeoutRef.current) {
+                clearTimeout(searchTimeoutRef.current);
+            }
+        };
     }, []);
 
-    // ---- Location search using expo-location geocoding ----
-    const searchLocation = async (query: string) => {
-        setLocationQuery(query);
-        if (query.length < 3) {
-            setLocationResults([]);
-            return;
-        }
+    const searchLocationFallback = async (query: string, requestId: number) => {
+        const coords = await Location.geocodeAsync(query);
+        const reverseResults = await Promise.all(
+            coords.slice(0, 5).map(async (coord: Location.LocationGeocodedLocation, index: number) => {
+                const addresses = await Location.reverseGeocodeAsync({
+                    latitude: coord.latitude,
+                    longitude: coord.longitude,
+                });
+                const firstAddress = addresses[0] || {};
+                const fullText = [
+                    firstAddress.name,
+                    firstAddress.street,
+                    firstAddress.city,
+                    firstAddress.region,
+                    firstAddress.country,
+                ]
+                    .filter(Boolean)
+                    .join(', ');
 
-        // Check permission before geocoding
-        if (!locationPermissionGranted.current) {
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            locationPermissionGranted.current = status === 'granted';
-            if (!locationPermissionGranted.current) {
-                Alert.alert(
-                    'Location Permission Required',
-                    'Please allow location access to search for your office address.',
-                );
-                return;
-            }
-        }
+                return {
+                    id: `fallback-${requestId}-${index}`,
+                    placeResourceName: '',
+                    primaryText: firstAddress.name || firstAddress.street || query,
+                    secondaryText:
+                        [
+                            firstAddress.city,
+                            firstAddress.region,
+                            firstAddress.country,
+                        ]
+                            .filter(Boolean)
+                            .join(', '),
+                    fullText: fullText || query,
+                    latitude: coord.latitude,
+                    longitude: coord.longitude,
+                };
+            }),
+        );
 
-        setIsSearching(true);
-        try {
-            // Use expo-location's geocodeAsync to convert address to coords
-            const coords = await Location.geocodeAsync(query);
-            if (coords.length > 0) {
-                // Reverse geocode to get nice address strings
-                const reverseResults = await Promise.all(
-                    coords.slice(0, 5).map(async (coord: Location.LocationGeocodedLocation) => {
-                        const addresses = await Location.reverseGeocodeAsync({
-                            latitude: coord.latitude,
-                            longitude: coord.longitude,
-                        });
-                        return { ...coord, ...(addresses[0] || {}) };
-                    })
-                );
-                setLocationResults(reverseResults as any);
-            } else {
-                setLocationResults([]);
-            }
-        } catch (err) {
-            console.error('Geocoding error:', err);
-            setLocationResults([]);
-        } finally {
-            setIsSearching(false);
+        if (requestId === searchSequenceRef.current) {
+            setLocationResults(reverseResults as PlaceSuggestion[]);
         }
     };
 
-    const selectLocation = (result: any) => {
-        const address = [
-            result.name,
-            result.street,
-            result.city,
-            result.region,
-            result.country,
-        ].filter(Boolean).join(', ');
+    // ---- Location search using Google Places autocomplete with device geocode fallback ----
+    const searchLocation = (query: string) => {
+        setLocationQuery(query);
+        setSelectedLocation(null);
 
-        setSelectedLocation({
-            latitude: result.latitude,
-            longitude: result.longitude,
-            address: address || locationQuery,
-        });
-        setLocationQuery(address || locationQuery);
-        setLocationResults([]);
-        setErrors((prev) => ({ ...prev, location: '' }));
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
+
+        if (query.trim().length < 3) {
+            setLocationResults([]);
+            setIsSearching(false);
+            return;
+        }
+
+        searchTimeoutRef.current = setTimeout(async () => {
+            const requestId = searchSequenceRef.current + 1;
+            searchSequenceRef.current = requestId;
+            setIsSearching(true);
+
+            try {
+                if (isGooglePlacesConfigured()) {
+                    const suggestions = await searchPlaceSuggestions(
+                        query,
+                        placesSessionTokenRef.current,
+                    );
+
+                    if (requestId === searchSequenceRef.current) {
+                        setLocationResults(suggestions);
+                    }
+                } else {
+                    await searchLocationFallback(query, requestId);
+                }
+            } catch (err) {
+                console.error('Places autocomplete error:', err);
+                try {
+                    await searchLocationFallback(query, requestId);
+                } catch (fallbackErr) {
+                    console.error('Fallback geocoding error:', fallbackErr);
+                    if (requestId === searchSequenceRef.current) {
+                        setLocationResults([]);
+                    }
+                }
+            } finally {
+                if (requestId === searchSequenceRef.current) {
+                    setIsSearching(false);
+                }
+            }
+        }, 250);
+    };
+
+    const selectLocation = async (result: PlaceSuggestion & Partial<CompanyLocation>) => {
+        setIsSearching(true);
+        try {
+            let resolvedLocation: CompanyLocation;
+
+            if (result.placeResourceName) {
+                const details = await fetchPlaceDetails(
+                    result.placeResourceName,
+                    placesSessionTokenRef.current,
+                );
+                resolvedLocation = {
+                    latitude: details.latitude,
+                    longitude: details.longitude,
+                    address: details.address,
+                };
+            } else if (
+                typeof result.latitude === 'number' &&
+                typeof result.longitude === 'number'
+            ) {
+                resolvedLocation = {
+                    latitude: result.latitude,
+                    longitude: result.longitude,
+                    address: result.fullText || locationQuery,
+                };
+            } else {
+                throw new Error('Unable to resolve location details');
+            }
+
+            setSelectedLocation(resolvedLocation);
+            setLocationQuery(resolvedLocation.address);
+            setLocationResults([]);
+            setErrors((prev) => ({ ...prev, location: '' }));
+            placesSessionTokenRef.current = `officeorbit-${Date.now()}`;
+        } catch (err) {
+            console.error('Place details error:', err);
+            Alert.alert(
+                'Location search unavailable',
+                'We could not load the full place details for that office. Please try another suggestion.',
+            );
+        } finally {
+            setIsSearching(false);
+        }
     };
 
     // ---- Validation ----
@@ -426,6 +526,9 @@ export const Onboarding: React.FC = () => {
                         placeholder="e.g. Viswesh Mekala"
                         placeholderTextColor="#CCC"
                         autoFocus
+                        onFocus={() => scrollToY(120)}
+                        returnKeyType="done"
+                        onSubmitEditing={() => Keyboard.dismiss()}
                     />
                 </View>
                 {errors.username ? <Text style={styles.errorText}>{errors.username}</Text> : null}
@@ -460,6 +563,8 @@ export const Onboarding: React.FC = () => {
                         onChangeText={(t) => { setCompany(t); setErrors((e) => ({ ...e, company: '' })); }}
                         placeholder="e.g. Google, Infosys"
                         placeholderTextColor="#CCC"
+                        onFocus={() => scrollToY(100)}
+                        returnKeyType="next"
                     />
                 </View>
                 {errors.company ? <Text style={styles.errorText}>{errors.company}</Text> : null}
@@ -473,8 +578,10 @@ export const Onboarding: React.FC = () => {
                         style={styles.input}
                         value={locationQuery}
                         onChangeText={searchLocation}
-                        placeholder="Search office address..."
+                        placeholder="Search office address or company campus..."
                         placeholderTextColor="#CCC"
+                        onFocus={() => scrollToY(220)}
+                        returnKeyType="search"
                     />
                     {isSearching && <ActivityIndicator size="small" color={theme.colors.primary} />}
                 </View>
@@ -483,21 +590,25 @@ export const Onboarding: React.FC = () => {
                 {/* Location search results */}
                 {locationResults.length > 0 && (
                     <View style={styles.locationResults}>
-                        {locationResults.map((result: any, idx: number) => {
-                            const addr = [result.name, result.street, result.city, result.region, result.country]
-                                .filter(Boolean)
-                                .join(', ');
-                            return (
-                                <TouchableOpacity
-                                    key={idx}
-                                    style={styles.locationResultItem}
-                                    onPress={() => selectLocation(result)}
-                                >
-                                    <Ionicons name="location" size={16} color={theme.colors.primary} />
-                                    <Text style={styles.locationResultText} numberOfLines={2}>{addr || 'Unknown location'}</Text>
-                                </TouchableOpacity>
-                            );
-                        })}
+                        {locationResults.map((result) => (
+                            <TouchableOpacity
+                                key={result.id}
+                                style={styles.locationResultItem}
+                                onPress={() => void selectLocation(result as PlaceSuggestion & Partial<CompanyLocation>)}
+                            >
+                                <Ionicons name="location" size={16} color={theme.colors.primary} />
+                                <View style={styles.locationResultCopy}>
+                                    <Text style={styles.locationResultPrimary} numberOfLines={1}>
+                                        {result.primaryText || 'Unknown location'}
+                                    </Text>
+                                    {!!result.secondaryText && (
+                                        <Text style={styles.locationResultSecondary} numberOfLines={2}>
+                                            {result.secondaryText}
+                                        </Text>
+                                    )}
+                                </View>
+                            </TouchableOpacity>
+                        ))}
                     </View>
                 )}
 
@@ -580,6 +691,9 @@ export const Onboarding: React.FC = () => {
                         keyboardType="numeric"
                         placeholder="8"
                         placeholderTextColor="#CCC"
+                        onFocus={() => scrollToY(200)}
+                        returnKeyType="done"
+                        onSubmitEditing={() => Keyboard.dismiss()}
                     />
                     <Text style={styles.loginTimeUnit}>hours / day</Text>
                 </View>
@@ -599,6 +713,9 @@ export const Onboarding: React.FC = () => {
                             keyboardType="numeric"
                             placeholder="0"
                             placeholderTextColor="#CCC"
+                            onFocus={() => scrollToY(320)}
+                            returnKeyType="done"
+                            onSubmitEditing={() => Keyboard.dismiss()}
                         />
                         <Text style={styles.wfhDaysSuffix}>days</Text>
                     </View>
@@ -650,13 +767,19 @@ export const Onboarding: React.FC = () => {
             />
 
             <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                behavior="padding"
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
                 style={{ flex: 1 }}
             >
                 <ScrollView
-                    contentContainerStyle={styles.scrollContent}
+                    ref={scrollRef}
+                    contentContainerStyle={[
+                        styles.scrollContent,
+                        { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 80 : 40 },
+                    ]}
                     showsVerticalScrollIndicator={false}
                     keyboardShouldPersistTaps="handled"
+                    scrollEventThrottle={16}
                 >
                     {/* Header */}
                     <View style={styles.header}>
@@ -708,7 +831,7 @@ export const Onboarding: React.FC = () => {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    scrollContent: { paddingBottom: 40 },
+    scrollContent: { flexGrow: 1 },
 
     // Header
     header: {
@@ -921,14 +1044,16 @@ const styles = StyleSheet.create({
     },
     locationResultItem: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         gap: 10,
         paddingVertical: 12,
         paddingHorizontal: 14,
         borderBottomWidth: 1,
         borderBottomColor: '#F8F8F8',
     },
-    locationResultText: { flex: 1, fontSize: 13, color: '#555' },
+    locationResultCopy: { flex: 1 },
+    locationResultPrimary: { fontSize: 13, color: '#333', fontWeight: '600' },
+    locationResultSecondary: { fontSize: 12, color: '#777', marginTop: 3, lineHeight: 17 },
 
     // Selected location
     selectedLocation: {

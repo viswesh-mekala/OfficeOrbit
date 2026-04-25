@@ -57,6 +57,8 @@ export const signInWithGoogle = async () => {
             path: 'auth/callback',
         });
 
+        console.log('[Auth] Google OAuth redirect URL:', redirectUrl);
+
         const { data, error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
@@ -71,8 +73,16 @@ export const signInWithGoogle = async () => {
             const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
 
             if (result.type === 'success' && result.url) {
-                const url = new URL(result.url);
-                const params = new URLSearchParams(url.hash.substring(1));
+                console.log('[Auth] OAuth callback URL received');
+
+                // Parse hash fragment manually — new URL() crashes on custom schemes
+                const hashIndex = result.url.indexOf('#');
+                if (hashIndex === -1) {
+                    throw new Error('No tokens in OAuth response');
+                }
+
+                const hashString = result.url.substring(hashIndex + 1);
+                const params = new URLSearchParams(hashString);
                 const accessToken = params.get('access_token');
                 const refreshToken = params.get('refresh_token');
 
@@ -94,6 +104,7 @@ export const signInWithGoogle = async () => {
 
         return { error: null };
     } catch (error: any) {
+        console.error('[Auth] Google sign-in error:', error.message);
         return { error: new Error(friendlyErrorMessage(error.message || 'Google sign in failed')) };
     }
 };

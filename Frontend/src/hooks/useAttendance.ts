@@ -8,14 +8,14 @@ import { useAuth } from '../store/AuthContext';
  * No userId needed — JWT handles identity.
  */
 export const useAttendance = () => {
-    const { user } = useAuth();
+    const { user, isProfileComplete } = useAuth();
     const [todayLog, setTodayLog] = useState<AttendanceLog | null>(null);
     const [weeklyLogs, setWeeklyLogs] = useState<AttendanceLog[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
     const fetchAttendance = useCallback(async () => {
-        if (!user?.id) return;
+        if (!user?.id || !isProfileComplete) return;
         
         try {
             // Fetch today's status (no userId — JWT handles it)
@@ -28,7 +28,7 @@ export const useAttendance = () => {
         } catch (error) {
             console.error('Attendance fetch error:', error);
         }
-    }, [user?.id]);
+    }, [user?.id, isProfileComplete]);
 
     const refresh = async () => {
         setRefreshing(true);

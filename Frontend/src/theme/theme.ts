@@ -10,6 +10,8 @@ export const theme = {
     },
     white: '#FFFFFF',
     success: '#4CAF50', // For the checkmark if needed
+    error: '#FF5252', // Red for Holiday
+    warning: '#FF9800', // Orange for Leave
   },
   spacing: {
     xs: 4,

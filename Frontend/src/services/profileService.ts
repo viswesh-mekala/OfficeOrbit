@@ -50,7 +50,7 @@ export const updateUserProfile = async (
     _userId: string,
     profileData: Partial<UserProfile>
 ): Promise<{ error: Error | null }> => {
-    const { error } = await callApi('profile-update', profileData);
+    const { error } = await callApi('profile-update', profileData, { injectTimezone: false });
 
     if (error) {
         return { error: new Error(error) };
