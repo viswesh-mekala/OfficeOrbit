@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import Animated, { 
@@ -25,6 +25,7 @@ interface SlideActionProps {
     icon?: keyof typeof Ionicons.glyphMap;
     color?: string;
     disabled?: boolean;
+    loading?: boolean;
 }
 
 export const SlideAction: React.FC<SlideActionProps> = ({ 
@@ -32,23 +33,20 @@ export const SlideAction: React.FC<SlideActionProps> = ({
     label = "Slide to Confirm", 
     icon = "chevron-forward",
     color = theme.colors.primary,
-    disabled = false
+    disabled = false,
+    loading = false
 }) => {
-    const [completed, setCompleted] = useState(false);
     const translateX = useSharedValue(0);
     const maxTranslateX = SWIPE_WIDTH - BUTTON_HEIGHT;
 
     const onSuccess = () => {
-        setCompleted(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         onSwipeSuccess();
-        
-        // Reset after delay if needed, or keep completed state
-        // For check-in, the parent usually unmounts/hides this button or changes state
+        translateX.value = withTiming(0, { duration: 220 });
     };
 
     const pan = Gesture.Pan()
-        .enabled(!disabled && !completed)
+        .enabled(!disabled && !loading)
         .onUpdate((event) => {
             const translation = event.translationX;
             // Clamp between 0 and max
@@ -68,7 +66,7 @@ export const SlideAction: React.FC<SlideActionProps> = ({
     const buttonStyle = useAnimatedStyle(() => {
         return {
             transform: [{ translateX: translateX.value }],
-            backgroundColor: completed ? theme.colors.success : theme.colors.white,
+            backgroundColor: theme.colors.white,
         };
     });
 
@@ -107,7 +105,7 @@ export const SlideAction: React.FC<SlideActionProps> = ({
                 {/* Label */}
                 <Animated.View style={[styles.labelContainer, trackStyle]}>
                     <Text style={[styles.label, { color: theme.colors.text.secondary }]}>
-                        {completed ? "Confirmed!" : label}
+                        {loading ? "Please wait..." : label}
                     </Text>
                 </Animated.View>
 
@@ -115,9 +113,9 @@ export const SlideAction: React.FC<SlideActionProps> = ({
                 <GestureDetector gesture={pan}>
                     <Animated.View style={[styles.button, buttonStyle]}>
                         <Ionicons 
-                            name={completed ? "checkmark" : icon} 
+                            name={icon} 
                             size={24} 
-                            color={completed ? theme.colors.white : color} 
+                            color={color} 
                         />
                     </Animated.View>
                 </GestureDetector>

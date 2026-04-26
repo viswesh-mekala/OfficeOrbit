@@ -19,6 +19,8 @@ export interface AttendanceLog {
     duration_minutes: number;
 }
 
+export type AttendanceStatus = 
+
 // ── Get Today's Attendance ──
 export const getTodayAttendance = async () => {
     const { data, error } = await callApi<AttendanceLog>('attendance-today');
@@ -49,6 +51,22 @@ export const clockIn = async (
 
     if (error) {
         return { data: null, error: new Error(error) };
+    }
+    return { data, error: null, message };
+};
+
+// ── Manually Update Attendance Day Status ──
+export const updateAttendanceDay = async (
+    date: string,
+    status: AttendanceStatus
+) => {
+    const { data, error, message } = await callApi<AttendanceLog>('attendance-update', {
+        date,
+        status,
+    });
+
+    if (error) {
+        return { data: null, error: new Error(error), message };
     }
     return { data, error: null, message };
 };

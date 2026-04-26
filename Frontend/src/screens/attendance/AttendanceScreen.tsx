@@ -1,11 +1,11 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, ActivityIndicator, Alert, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme/theme';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Calendar, DateData, LocaleConfig } from 'react-native-calendars';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { getWeeklyAttendance, AttendanceLog } from '../../services/AttendanceService';
+import { getWeeklyAttendance, AttendanceLog, AttendanceStatus, updateAttendanceDay } from '../../services/AttendanceService';
 
 
 // Setup basic locale if needed, though default english is fine
@@ -29,6 +29,8 @@ export const Attendance: React.FC = () => {
     const [pickerDate, setPickerDate] = useState(new Date());
     const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>([]);
     const [loading, setLoading] = useState(true);
+    const [updatingDay, setUpdatingDay] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
 
     // Fetch real attendance data from API
     const fetchAttendance = useCallback(async () => {
@@ -60,20 +62,40 @@ export const Attendance: React.FC = () => {
     const presentDates = useMemo(() => {
         const dates: { [key: string]: any } = {};
         attendanceLogs.forEach(log => {
-            let dotColor = '#00C853'; // green = office
-            if (log.status === 'wfh') dotColor = '#2196F3'; // blue = WFH
-            else if (log.status === 'absent') dotColor = '#F44336'; // red = absent
-            else if (log.status === 'leave') dotColor = '#FF9800'; // orange = leave
-            else if (log.status === 'holiday') dotColor = '#9C27B0'; // purple = holiday
+            let dotColor = theme.colors.primary; // office = violet (brand)
+            if (log.status === 'wfh') dotColor = '#14B8A6'; // teal
+            else if (log.status === 'holiday') dotColor = '#EF4444'; // red
+            else if (log.status === 'leave') dotColor = '#F59E0B'; // amber
+            else if (log.status === 'absent') dotColor = '#9CA3AF'; // gray
 
             dates[log.date] = { marked: true, dotColor };
         });
         return dates;
     }, [attendanceLogs]);
 
+    const weekendDates = useMemo(() => {
+        const weekendMarks: { [key: string]: any } = {};
+        const monthDate = new Date(currentMonth);
+        const year = monthDate.getFullYear();
+        const month = monthDate.getMonth();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+        for (let day = 1; day <= daysInMonth; day++) {
+            const d = new Date(year, month, day);
+            const dayOfWeek = d.getDay();
+            if (dayOfWeek === 0 || dayOfWeek === 6) {
+                const dateString = d.toISOString().split('T')[0];
+                if (!attendanceByDate[dateString]) {
+                    weekendMarks[dateString] = { marked: true, dotColor: '#F97316' }; // weekend orange
+                }
+            }
+        }
+        return weekendMarks;
+    }, [attendanceByDate, currentMonth]);
+
     // Merged Marked Dates (Presence + Selection)
     const markedDates = useMemo(() => {
-        const marks = { ...presentDates };
+        const marks = { ...weekendDates, ...presentDates };
         if (selectedDate) {
             marks[selectedDate] = {
                 ...(marks[selectedDate] || {}),
@@ -84,7 +106,7 @@ export const Attendance: React.FC = () => {
             };
         }
         return marks;
-    }, [presentDates, selectedDate]);
+    }, [presentDates, weekendDates, selectedDate]);
 
     // Get selected day's log
     const selectedLog = attendanceByDate[selectedDate] || null;
@@ -138,11 +160,34 @@ export const Attendance: React.FC = () => {
         if (!log) return 'No Record';
         switch (log.status) {
             case 'present': return 'Office';
-            case 'wfh': return 'Work From Home';
-            case 'leave': return 'Leave';
+            case 'wfh': return 'Home';
+            case 'leave': return 'Holiday';
             case 'holiday': return 'Holiday';
             case 'absent': return 'Absent';
             default: return 'Unknown';
+        }
+    };
+
+    const handleEditSelectedDay = () => {
+        if (updatingDay) return;
+        setShowEditModal(true);
+    };
+
+    const handleStatusUpdate = async (status: AttendanceStatus) => {
+        try {
+            setUpdatingDay(true);
+            setShowEditModal(false);
+            const { error } = await updateAttendanceDay(selectedDate, status);
+            if (error) {
+                Alert.alert('Update Failed', error.message);
+                return;
+            }
+            await fetchAttendance();
+            Alert.alert('Saved', 'Day status updated successfully.');
+        } catch {
+            Alert.alert('Update Failed', 'Could not update this day. Please try again.');
+        } finally {
+            setUpdatingDay(false);
         }
     };
 
@@ -248,6 +293,13 @@ export const Attendance: React.FC = () => {
                                 ) : null}
                             </View>
                         </View>
+                        <TouchableOpacity style={styles.editButton} onPress={handleEditSelectedDay} disabled={updatingDay}>
+                            {updatingDay ? (
+                                <ActivityIndicator size="small" color={theme.colors.primary} />
+                            ) : (
+                                <Ionicons name="create-outline" size={16} color={theme.colors.primary} />
+                            )}
+                        </TouchableOpacity>
                     </View>
 
                     {/* Timeline */}
@@ -291,6 +343,41 @@ export const Attendance: React.FC = () => {
                 </Animated.View>
 
             </ScrollView>
+
+            <Modal
+                visible={showEditModal}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowEditModal(false)}
+            >
+                <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowEditModal(false)}>
+                    <TouchableOpacity activeOpacity={1} style={styles.modalCard}>
+                        <Text style={styles.modalTitle}>Edit Day Status</Text>
+                        <Text style={styles.modalSubtitle}>{summaryDateDisplay}</Text>
+                        <View style={styles.modalOptions}>
+                            <TouchableOpacity style={styles.modalOption} onPress={() => handleStatusUpdate('present')}>
+                                <View style={[styles.optionDot, { backgroundColor: theme.colors.primary }]} />
+                                <Text style={styles.modalOptionText}>Office</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.modalOption} onPress={() => handleStatusUpdate('wfh')}>
+                                <View style={[styles.optionDot, { backgroundColor: '#14B8A6' }]} />
+                                <Text style={styles.modalOptionText}>Home</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.modalOption} onPress={() => handleStatusUpdate('holiday')}>
+                                <View style={[styles.optionDot, { backgroundColor: '#EF4444' }]} />
+                                <Text style={styles.modalOptionText}>Holiday</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.modalOption} onPress={() => handleStatusUpdate('holiday')}>
+                                <View style={[styles.optionDot, { backgroundColor: '#F97316' }]} />
+                                <Text style={styles.modalOptionText}>Weekend</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <TouchableOpacity style={styles.modalCancel} onPress={() => setShowEditModal(false)}>
+                            <Text style={styles.modalCancelText}>Cancel</Text>
+                        </TouchableOpacity>
+                    </TouchableOpacity>
+                </TouchableOpacity>
+            </Modal>
         </View>
     );
 };
@@ -390,6 +477,63 @@ const styles = StyleSheet.create({
         backgroundColor: '#F5F7FA',
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.35)',
+        justifyContent: 'flex-end',
+        padding: 16,
+    },
+    modalCard: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 20,
+        padding: 16,
+        marginBottom: 8,
+    },
+    modalTitle: {
+        fontSize: 17,
+        fontWeight: '700',
+        color: '#111827',
+    },
+    modalSubtitle: {
+        marginTop: 2,
+        marginBottom: 12,
+        color: '#6B7280',
+        fontSize: 13,
+        fontWeight: '500',
+    },
+    modalOptions: {
+        gap: 8,
+    },
+    modalOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 10,
+        paddingHorizontal: 4,
+        gap: 10,
+    },
+    optionDot: {
+        width: 10,
+        height: 10,
+        borderRadius: 5,
+    },
+    modalOptionText: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: '#111827',
+    },
+    modalCancel: {
+        marginTop: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+        paddingVertical: 10,
+    },
+    modalCancelText: {
+        color: '#4B5563',
+        fontWeight: '600',
     },
     timelineContainer: {
         position: 'relative',

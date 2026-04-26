@@ -1,7 +1,6 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { theme } from '../../theme/theme';
 import { Header } from '../../components/layout/Header';
 import { StatusPill } from '../../components/common/StatusPill';
@@ -22,6 +21,7 @@ import { getDistanceFromLatLonInMeters } from '../../utils/locationUtils';
 export const Dashboard: React.FC = () => {
     const { user: authUser, profile, loading: authLoading } = useAuth();
     const { todayLog, weeklyLogs, loading: attendanceLoading, refresh, refreshing } = useAttendance();
+    const [isSubmittingAttendance, setIsSubmittingAttendance] = useState(false);
     
     // Fallback data
     const userName = profile?.username || authUser?.user_metadata?.name || 'User';
@@ -81,29 +81,37 @@ export const Dashboard: React.FC = () => {
     }
 
     const handleSwipeAction = async () => {
-        if (!authUser?.id) return;
+        if (!authUser?.id || isSubmittingAttendance) return;
+
+        setIsSubmittingAttendance(true);
 
         // CASE 1: Check Out (if already checked in and not checked out)
-        if (todayLog && !todayLog.check_out) {
-            const { error } = await clockOut();
-            if (error) {
-                Alert.alert("Error", error.message || "Failed to check out.");
-            } else {
-                refresh();
-                Alert.alert("Success", "Checked out successfully! 👋");
-            }
-            return;
-        }
-
-        // CASE 2: Check In
         try {
+            if (todayLog && !todayLog.check_out) {
+                const { error } = await clockOut();
+                if (error) {
+                    Alert.alert("Error", error.message || "Failed to check out.");
+                } else {
+                    refresh();
+                    Alert.alert("Success", "Checked out successfully! 👋");
+                }
+                return;
+            }
+
+            // CASE 2: Check In
             const { status } = await Location.requestForegroundPermissionsAsync();
             if (status !== 'granted') {
                 Alert.alert("Permission", "Location access is needed to check in.");
                 return;
             }
 
-            const location = await Location.getCurrentPositionAsync({});
+            const quickLocation = await Location.getLastKnownPositionAsync({
+                maxAge: 120000, // Use cached location up to 2 minutes old for faster response
+                requiredAccuracy: 150,
+            });
+            const location = quickLocation ?? await Location.getCurrentPositionAsync({
+                accuracy: Location.Accuracy.Balanced,
+            });
             
             // Validate Distance if Profile has location
             if (profile?.company_location) {
@@ -131,8 +139,8 @@ export const Dashboard: React.FC = () => {
                 } else {
                     // Far from office
                     Alert.alert(
-                        "Not at Office",
-                        "You seem to be far from the office location. Mark as Work From Home?",
+                        "Away From Office Location",
+                        "You are outside the office boundary. Do you want to continue and mark attendance as Work From Home?",
                         [
                             { text: "Cancel", style: "cancel" },
                             { 
@@ -147,6 +155,7 @@ export const Dashboard: React.FC = () => {
                                          Alert.alert("Error", error.message);
                                     } else {
                                         refresh();
+                                        Alert.alert("Done", "Marked as Work From Home.");
                                     }
                                 } 
                             }
@@ -181,6 +190,8 @@ export const Dashboard: React.FC = () => {
 
         } catch (error) {
             Alert.alert("Error", "Could not verify location.");
+        } finally {
+            setIsSubmittingAttendance(false);
         }
     };
 
@@ -206,14 +217,18 @@ export const Dashboard: React.FC = () => {
             if (day !== 0 && day !== 6) totalBusinessDays++;
         }
 
-        // Days logged (present or WFH) this month
+        // Working-day logs this month
         const monthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
         const monthLogs = weeklyLogs.filter(l =>
             l.date.startsWith(monthStr) && (l.status === 'present' || l.status === 'wfh')
         );
-        const officeDays = monthLogs.length;
-        const compliancePercent = businessDaysElapsed > 0
-            ? Math.round((officeDays / businessDaysElapsed) * 100)
+        const officeDays = monthLogs.filter(l => l.status === 'present').length;
+        const homeDays = monthLogs.filter(l => l.status === 'wfh').length;
+        const workedDays = officeDays + homeDays;
+
+        // Office ratio out of worked days only: office / (office + home)
+        const compliancePercent = workedDays > 0
+            ? Math.round((officeDays / workedDays) * 100)
             : 0;
 
         // Weekly stat (current week, Mon–Sun)
@@ -227,11 +242,14 @@ export const Dashboard: React.FC = () => {
             weekDates.push(d.toISOString().split('T')[0]);
         }
         const weekLogs = weeklyLogs.filter(l => weekDates.includes(l.date) && (l.status === 'present' || l.status === 'wfh'));
+        const weekOfficeDays = weekLogs.filter(l => l.status === 'present').length;
+        const weekHomeDays = weekLogs.filter(l => l.status === 'wfh').length;
+        const weekWorkedDays = weekOfficeDays + weekHomeDays;
         const weekWorkdays = weekDates.filter(d => {
             const day = new Date(d).getDay();
             return day !== 0 && day !== 6;
         }).length;
-        const weekPercent = weekWorkdays > 0 ? Math.round((weekLogs.length / weekWorkdays) * 100) : 0;
+        const weekPercent = weekWorkedDays > 0 ? Math.round((weekOfficeDays / weekWorkedDays) * 100) : 0;
 
         // Current streak — consecutive attendance days (working backwards from today)
         let streak = 0;
@@ -262,24 +280,24 @@ export const Dashboard: React.FC = () => {
         else if (compliancePercent < 70) complianceStatus = 'Almost There';
 
         // Alert
-        const remainingWorkdays = weekWorkdays - weekLogs.length;
-        const needsMore = remainingWorkdays > 0 && weekPercent < 80;
+        const remainingWorkdays = weekWorkdays - weekWorkedDays;
+        const needsMore = remainingWorkdays > 0 && weekPercent < 50;
 
         return {
             compliance: {
                 percent: Math.min(compliancePercent, 100),
                 currentDays: officeDays,
-                totalDays: businessDaysElapsed,
+                totalDays: workedDays,
                 status: complianceStatus,
             },
             weekly: {
                 percent: Math.min(weekPercent, 100),
-                label: 'This Week',
-                subtext: `${weekLogs.length}/${weekWorkdays} Days`,
+                label: 'Office Ratio',
+                subtext: `${weekOfficeDays}/${weekWorkedDays || 0} Office Days`,
             },
             metrics: [
                 { title: 'Current Streak', value: String(streak), subtext: 'Days', icon: 'flame' as const, color: '#FF9800' },
-                { title: 'This Month', value: String(officeDays), subtext: `of ${businessDaysElapsed} workdays`, icon: 'calendar' as const },
+                { title: 'This Month', value: String(workedDays), subtext: `${officeDays} Office, ${homeDays} Home`, icon: 'calendar' as const },
             ],
             alert: needsMore
                 ? { title: 'Gap Detected', message: `You need ${remainingWorkdays} more day${remainingWorkdays > 1 ? 's' : ''} this week to stay on track.`, action: '' }
@@ -325,6 +343,7 @@ export const Dashboard: React.FC = () => {
                             color={todayLog ? theme.colors.warning : theme.colors.success}
                             onSwipeSuccess={handleSwipeAction}
                             disabled={todayLog?.status === 'holiday' || todayLog?.status === 'leave'} // Disable check-in on holidays
+                            loading={isSubmittingAttendance}
                         />
                     ) : (
                          <View style={styles.shiftComplete}>
@@ -336,12 +355,19 @@ export const Dashboard: React.FC = () => {
                 {/* Compliance Section */}
                 <Animated.View entering={FadeInDown.delay(200).duration(600).springify()}>
                     <View style={styles.section}>
-                        <ProgressRing
-                            percent={dashboardMetrics.compliance.percent}
-                            currentDays={dashboardMetrics.compliance.currentDays}
-                            totalDays={dashboardMetrics.compliance.totalDays}
-                            status={dashboardMetrics.compliance.status}
-                        />
+                        {attendanceLoading || authLoading ? (
+                            <View style={styles.loadingCard}>
+                                <ActivityIndicator size="small" color={theme.colors.primary} />
+                                <Text style={styles.loadingText}>Updating dashboard...</Text>
+                            </View>
+                        ) : (
+                            <ProgressRing
+                                percent={dashboardMetrics.compliance.percent}
+                                currentDays={dashboardMetrics.compliance.currentDays}
+                                totalDays={dashboardMetrics.compliance.totalDays}
+                                status={dashboardMetrics.compliance.status}
+                            />
+                        )}
                     </View>
                 </Animated.View>
 
@@ -412,6 +438,21 @@ const styles = StyleSheet.create({
     },
     section: {
         marginBottom: 16,
+    },
+    loadingCard: {
+        borderRadius: 20,
+        paddingVertical: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#FFFFFF',
+        borderWidth: 1,
+        borderColor: '#E7EAF2',
+        gap: 8,
+    },
+    loadingText: {
+        color: theme.colors.text.secondary,
+        fontSize: 13,
+        fontWeight: '500',
     },
     metricsRow: {
         flexDirection: 'row',
