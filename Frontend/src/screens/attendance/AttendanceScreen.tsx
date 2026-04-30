@@ -6,6 +6,7 @@ import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Calendar, DateData, LocaleConfig } from 'react-native-calendars';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { getWeeklyAttendance, AttendanceLog, AttendanceStatus, updateAttendanceDay } from '../../services/AttendanceService';
+import { useRouter } from 'expo-router';
 
 
 // Setup basic locale if needed, though default english is fine
@@ -18,10 +19,28 @@ LocaleConfig.locales['en'] = {
 };
 LocaleConfig.defaultLocale = 'en';
 
+const formatLocalDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const STATUS_THEME: Record<string, { fill: string; text: string; label: string }> = {
+    present: { fill: '#66ff66', text: '#0F172A', label: 'Office' },
+    wfh: { fill: '#ff4d4d', text: '#FFFFFF', label: 'Home' },
+    leave: { fill: '#ffb84d', text: '#0F172A', label: 'Leave' },
+    holiday: { fill: '#ff9900', text: '#0F172A', label: 'Holiday' },
+    absent: { fill: '#9CA3AF', text: '#FFFFFF', label: 'Absent' },
+    weekend: { fill: '#5B4DFF', text: '#FFFFFF', label: 'Weekend' },
+    empty: { fill: '#F3F4F6', text: '#6B7280', label: 'No Record' },
+};
+
 export const Attendance: React.FC = () => {
+    const router = useRouter();
     // Current date for default state
     const today = new Date();
-    const todayString = today.toISOString().split('T')[0];
+    const todayString = formatLocalDate(today);
 
     const [selectedDate, setSelectedDate] = useState(todayString);
     const [currentMonth, setCurrentMonth] = useState(todayString);
@@ -62,13 +81,19 @@ export const Attendance: React.FC = () => {
     const presentDates = useMemo(() => {
         const dates: { [key: string]: any } = {};
         attendanceLogs.forEach(log => {
-            let dotColor = theme.colors.primary; // office = violet (brand)
-            if (log.status === 'wfh') dotColor = '#14B8A6'; // teal
-            else if (log.status === 'holiday') dotColor = '#EF4444'; // red
-            else if (log.status === 'leave') dotColor = '#F59E0B'; // amber
-            else if (log.status === 'absent') dotColor = '#9CA3AF'; // gray
-
-            dates[log.date] = { marked: true, dotColor };
+            const statusTheme = STATUS_THEME[log.status] || STATUS_THEME.empty;
+            dates[log.date] = {
+                customStyles: {
+                    container: {
+                        backgroundColor: statusTheme.fill,
+                        borderRadius: 8,
+                    },
+                    text: {
+                        color: statusTheme.text,
+                        fontWeight: '700',
+                    },
+                },
+            };
         });
         return dates;
     }, [attendanceLogs]);
@@ -84,9 +109,20 @@ export const Attendance: React.FC = () => {
             const d = new Date(year, month, day);
             const dayOfWeek = d.getDay();
             if (dayOfWeek === 0 || dayOfWeek === 6) {
-                const dateString = d.toISOString().split('T')[0];
+                    const dateString = formatLocalDate(d);
                 if (!attendanceByDate[dateString]) {
-                    weekendMarks[dateString] = { marked: true, dotColor: '#F97316' }; // weekend orange
+                    weekendMarks[dateString] = {
+                        customStyles: {
+                            container: {
+                                backgroundColor: STATUS_THEME.weekend.fill,
+                                borderRadius: 8,
+                            },
+                            text: {
+                                color: STATUS_THEME.weekend.text,
+                                fontWeight: '700',
+                            },
+                        },
+                    };
                 }
             }
         }
@@ -97,12 +133,21 @@ export const Attendance: React.FC = () => {
     const markedDates = useMemo(() => {
         const marks = { ...weekendDates, ...presentDates };
         if (selectedDate) {
+            const existing = marks[selectedDate]?.customStyles;
             marks[selectedDate] = {
                 ...(marks[selectedDate] || {}),
-                selected: true,
-                selectedColor: '#1A1A1A',
-                selectedTextColor: '#FFFFFF',
-                dotColor: marks[selectedDate] ? '#FFFFFF' : undefined
+                customStyles: {
+                    container: {
+                        backgroundColor: existing?.container?.backgroundColor || '#111827',
+                        borderRadius: 8,
+                        borderWidth: 2,
+                        borderColor: '#111827',
+                    },
+                    text: {
+                        color: existing?.text?.color || '#FFFFFF',
+                        fontWeight: '800',
+                    },
+                },
             };
         }
         return marks;
@@ -137,7 +182,7 @@ export const Attendance: React.FC = () => {
         }
         if (date) {
             setPickerDate(date);
-            const newDateStr = date.toISOString().split('T')[0];
+            const newDateStr = formatLocalDate(date);
             setCurrentMonth(newDateStr);
             setSelectedDate(newDateStr);
         }
@@ -158,14 +203,17 @@ export const Attendance: React.FC = () => {
     // Status label for the selected day
     const getStatusLabel = (log: AttendanceLog | null): string => {
         if (!log) return 'No Record';
-        switch (log.status) {
-            case 'present': return 'Office';
-            case 'wfh': return 'Home';
-            case 'leave': return 'Holiday';
-            case 'holiday': return 'Holiday';
-            case 'absent': return 'Absent';
-            default: return 'Unknown';
+        if (log.status === 'absent') return 'No Record';
+        return STATUS_THEME[log.status]?.label || 'Unknown';
+    };
+
+    const getStatusThemeForDate = (date: string, log: AttendanceLog | null) => {
+        if (log) {
+            return STATUS_THEME[log.status] || STATUS_THEME.empty;
         }
+        const dayOfWeek = new Date(date).getDay();
+        if (dayOfWeek === 0 || dayOfWeek === 6) return STATUS_THEME.weekend;
+        return STATUS_THEME.empty;
     };
 
     const handleEditSelectedDay = () => {
@@ -191,6 +239,7 @@ export const Attendance: React.FC = () => {
         }
     };
 
+    const selectedStatusTheme = getStatusThemeForDate(selectedDate, selectedLog);
 
     return (
         <View style={styles.container}>
@@ -203,9 +252,9 @@ export const Attendance: React.FC = () => {
                     <Text style={styles.monthText}>{headerDateDisplay}</Text>
                     <Ionicons name="chevron-down" size={20} color={theme.colors.primary} />
                 </TouchableOpacity>
-                <View style={styles.avatarContainer}>
+                <TouchableOpacity style={styles.avatarContainer} onPress={() => router.push('/profile')}>
                     <Ionicons name="person-circle" size={40} color="#FF8A65" />
-                </View>
+                </TouchableOpacity>
             </View>
 
             {/* Native Date Picker */}
@@ -230,10 +279,11 @@ export const Attendance: React.FC = () => {
                         onDayPress={handleDayPress}
                         onMonthChange={handleMonthChange}
                         markedDates={markedDates}
+                        markingType="custom"
                         theme={{
                             backgroundColor: '#ffffff',
                             calendarBackground: '#ffffff',
-                            textSectionTitleColor: '#BBB',
+                            textSectionTitleColor: '#111111',
                             selectedDayBackgroundColor: '#1A1A1A',
                             selectedDayTextColor: '#ffffff',
                             todayTextColor: theme.colors.primary,
@@ -247,7 +297,7 @@ export const Attendance: React.FC = () => {
                             indicatorColor: theme.colors.primary,
                             textDayFontWeight: '500',
                             textMonthFontWeight: 'bold',
-                            textDayHeaderFontWeight: '600',
+                            textDayHeaderFontWeight: '800',
                             textDayFontSize: 13, // Smaller font
                             textMonthFontSize: 16,
                             textDayHeaderFontSize: 12,
@@ -273,6 +323,17 @@ export const Attendance: React.FC = () => {
                         enableSwipeMonths={true}
                     />
                 </View>
+                <View style={styles.legendContainer}>
+                    <Text style={styles.legendTitle}>Legend</Text>
+                    <View style={styles.legendRow}>
+                        {['present', 'wfh', 'leave', 'holiday', 'weekend'].map((key) => (
+                            <View key={key} style={styles.legendItem}>
+                                <View style={[styles.legendSwatch, { backgroundColor: STATUS_THEME[key].fill }]} />
+                                <Text style={styles.legendText}>{STATUS_THEME[key].label}</Text>
+                            </View>
+                        ))}
+                    </View>
+                </View>
 
                 {/* Summary Card */}
                 <Animated.View entering={FadeInUp.duration(600).delay(200)} style={styles.summaryCard}>
@@ -280,9 +341,8 @@ export const Attendance: React.FC = () => {
                         <View>
                             <Text style={styles.summaryDate}>{summaryDateDisplay}</Text>
                             <View style={styles.statusRow}>
-                                <View style={[styles.statusBadge, !selectedLog && { backgroundColor: '#F5F5F5' }]}>
-                                    <View style={[styles.statusBadgeDot, !selectedLog && { backgroundColor: '#999' }]} />
-                                    <Text style={[styles.statusBadgeText, !selectedLog && { color: '#999' }]}>
+                                <View style={[styles.statusBadge, { backgroundColor: selectedStatusTheme.fill }]}>
+                                    <Text style={[styles.statusBadgeText, { color: selectedStatusTheme.text }]}>
                                         {getStatusLabel(selectedLog)}
                                     </Text>
                                 </View>
@@ -316,7 +376,7 @@ export const Attendance: React.FC = () => {
                                 <Text style={styles.timelineLabel}>Arrival</Text>
                                 <Text style={styles.timelineLocation}>
                                     <Ionicons name="location-sharp" size={12} color="#999" />
-                                    {' '}{selectedLog?.location_check_in?.address || 'N/A'}
+                                    {' '}{selectedLog?.location_check_in?.address || 'NULL'}
                                 </Text>
                             </View>
                             <Text style={styles.timelineTime}>{formatLogTime(selectedLog?.check_in ?? null)}</Text>
@@ -331,7 +391,7 @@ export const Attendance: React.FC = () => {
                                 <Text style={styles.timelineLabel}>Departure</Text>
                                 <Text style={styles.timelineLocation}>
                                     <Ionicons name="business" size={12} color="#999" />
-                                    {' '}{selectedLog?.check_out ? 'Checked out' : 'Not yet'}
+                                    {' '}{selectedLog?.check_out ? 'Checked out' : 'NULL'}
                                 </Text>
                             </View>
                             <Text style={styles.timelineTime}>{formatLogTime(selectedLog?.check_out ?? null)}</Text>
@@ -356,20 +416,20 @@ export const Attendance: React.FC = () => {
                         <Text style={styles.modalSubtitle}>{summaryDateDisplay}</Text>
                         <View style={styles.modalOptions}>
                             <TouchableOpacity style={styles.modalOption} onPress={() => handleStatusUpdate('present')}>
-                                <View style={[styles.optionDot, { backgroundColor: theme.colors.primary }]} />
+                                <View style={[styles.optionDot, { backgroundColor: STATUS_THEME.present.fill }]} />
                                 <Text style={styles.modalOptionText}>Office</Text>
                             </TouchableOpacity>
                             <TouchableOpacity style={styles.modalOption} onPress={() => handleStatusUpdate('wfh')}>
-                                <View style={[styles.optionDot, { backgroundColor: '#14B8A6' }]} />
+                                <View style={[styles.optionDot, { backgroundColor: STATUS_THEME.wfh.fill }]} />
                                 <Text style={styles.modalOptionText}>Home</Text>
                             </TouchableOpacity>
                             <TouchableOpacity style={styles.modalOption} onPress={() => handleStatusUpdate('holiday')}>
-                                <View style={[styles.optionDot, { backgroundColor: '#EF4444' }]} />
+                                <View style={[styles.optionDot, { backgroundColor: STATUS_THEME.holiday.fill }]} />
                                 <Text style={styles.modalOptionText}>Holiday</Text>
                             </TouchableOpacity>
-                            <TouchableOpacity style={styles.modalOption} onPress={() => handleStatusUpdate('holiday')}>
-                                <View style={[styles.optionDot, { backgroundColor: '#F97316' }]} />
-                                <Text style={styles.modalOptionText}>Weekend</Text>
+                            <TouchableOpacity style={styles.modalOption} onPress={() => handleStatusUpdate('leave')}>
+                                <View style={[styles.optionDot, { backgroundColor: STATUS_THEME.leave.fill }]} />
+                                <Text style={styles.modalOptionText}>Leave</Text>
                             </TouchableOpacity>
                         </View>
                         <TouchableOpacity style={styles.modalCancel} onPress={() => setShowEditModal(false)}>
@@ -409,7 +469,7 @@ const styles = StyleSheet.create({
         // Simple avatar container
     },
     calendarContainer: {
-        marginBottom: 8,
+        marginBottom: 6,
     },
     // daysHeader, dayLabel, datesGrid, dateCell, dateTouch... mostly unused now as Calendar handles it
     // But keeping general styles for Card below
@@ -418,8 +478,8 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
         marginHorizontal: 20,
         marginBottom: 20,
-        borderRadius: 24,
-        padding: 20,
+        borderRadius: 20,
+        padding: 18,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 10 },
         shadowOpacity: 0.05,
@@ -427,7 +487,7 @@ const styles = StyleSheet.create({
         elevation: 5,
         borderWidth: 1,
         borderColor: '#F5F5F5',
-        marginTop: 24
+        marginTop: 14
     },
     summaryHeader: {
         flexDirection: 'row',
@@ -449,22 +509,13 @@ const styles = StyleSheet.create({
     statusBadge: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-        backgroundColor: '#E8F5E9', // Light green bg
+        paddingHorizontal: 10,
+        paddingVertical: 5,
         borderRadius: 20,
-        gap: 6,
-    },
-    statusBadgeDot: {
-        width: 5,
-        height: 5,
-        borderRadius: 2.5,
-        backgroundColor: '#00C853',
     },
     statusBadgeText: {
-        color: '#2E7D32',
-        fontWeight: '600',
-        fontSize: 11,
+        fontWeight: '700',
+        fontSize: 12,
     },
     statusTime: {
         color: '#999',
@@ -504,6 +555,45 @@ const styles = StyleSheet.create({
     },
     modalOptions: {
         gap: 8,
+    },
+    legendContainer: {
+        marginHorizontal: 20,
+        marginTop: 2,
+        marginBottom: 8,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        backgroundColor: '#FFFFFF',
+    },
+    legendTitle: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#4B5563',
+        marginBottom: 6,
+        letterSpacing: 0.3,
+        textTransform: 'uppercase',
+    },
+    legendRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 10,
+    },
+    legendItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    legendSwatch: {
+        width: 10,
+        height: 10,
+        borderRadius: 2,
+    },
+    legendText: {
+        fontSize: 11,
+        color: '#374151',
+        fontWeight: '600',
     },
     modalOption: {
         flexDirection: 'row',

@@ -1,4 +1,9 @@
-export type TeamAttendanceStatus = 'office' | 'home' | 'not_checked_in';
+export type TeamAttendanceStatus =
+    | 'office'
+    | 'home'
+    | 'leave'
+    | 'holiday'
+    | 'weekend';
 
 export interface TeamMember {
     id: string;

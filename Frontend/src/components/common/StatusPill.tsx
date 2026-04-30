@@ -11,10 +11,10 @@ interface StatusPillProps {
 export const StatusPill: React.FC<StatusPillProps> = ({ status, location, variant = 'wfo' }) => {
     const getStatusColor = () => {
         switch (variant) {
-            case 'wfo': return theme.colors.success;
-            case 'wfh': return theme.colors.primary; // Purple for WFH
-            case 'holiday': return theme.colors.error;
-            case 'leave': return theme.colors.warning;
+            case 'wfo': return '#66ff66';
+            case 'wfh': return '#ff4d4d';
+            case 'holiday': return '#ff9900';
+            case 'leave': return '#ffb84d';
             default: return theme.colors.text.secondary;
         }
     };

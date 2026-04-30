@@ -29,18 +29,15 @@ Deno.serve(async (req: Request) => {
 
     if (fetchError) throw fetchError;
 
-    const isOffDayStatus = status === 'holiday' || status === 'leave' || status === 'absent';
-
     if (existingLog) {
-      const updatePayload: Record<string, unknown> = { status };
-
-      // Clearing timings prevents wrong duration/count after manual off-day correction.
-      if (isOffDayStatus) {
-        updatePayload.check_in = null;
-        updatePayload.check_out = null;
-        updatePayload.total_minutes = 0;
-        updatePayload.check_in_location = null;
-      }
+      // Manual calendar edits are status corrections, so clear timing/location artifacts.
+      const updatePayload: Record<string, unknown> = {
+        status,
+        check_in: null,
+        check_out: null,
+        total_minutes: 0,
+        check_in_location: null,
+      };
 
       const { data: updatedLog, error: updateError } = await supabase
         .from('attendance_records')
@@ -64,6 +61,10 @@ Deno.serve(async (req: Request) => {
         user_id: user.id,
         date,
         status,
+        check_in: null,
+        check_out: null,
+        total_minutes: 0,
+        check_in_location: null,
       })
       .select()
       .single();

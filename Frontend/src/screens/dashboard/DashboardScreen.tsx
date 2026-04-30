@@ -17,6 +17,7 @@ import { useAttendance } from '../../hooks/useAttendance';
 import { SlideAction } from '../../components/common/SlideAction';
 import { clockIn, clockOut } from '../../services/AttendanceService';
 import { getDistanceFromLatLonInMeters } from '../../utils/locationUtils';
+import { addNotification } from '../../services/NotificationService';
 
 export const Dashboard: React.FC = () => {
     const { user: authUser, profile, loading: authLoading } = useAuth();
@@ -90,9 +91,19 @@ export const Dashboard: React.FC = () => {
             if (todayLog && !todayLog.check_out) {
                 const { error } = await clockOut();
                 if (error) {
+                    await addNotification({
+                        title: 'Check-out failed',
+                        body: error.message || 'We could not check you out. Please try again.',
+                        type: 'attendance',
+                    });
                     Alert.alert("Error", error.message || "Failed to check out.");
                 } else {
                     refresh();
+                    await addNotification({
+                        title: 'Checked out successfully',
+                        body: 'Your attendance has been marked for today.',
+                        type: 'attendance',
+                    });
                     Alert.alert("Success", "Checked out successfully! 👋");
                 }
                 return;
@@ -101,6 +112,11 @@ export const Dashboard: React.FC = () => {
             // CASE 2: Check In
             const { status } = await Location.requestForegroundPermissionsAsync();
             if (status !== 'granted') {
+                await addNotification({
+                    title: 'Location permission required',
+                    body: 'Enable location access to continue check-in.',
+                    type: 'location',
+                });
                 Alert.alert("Permission", "Location access is needed to check in.");
                 return;
             }
@@ -131,9 +147,19 @@ export const Dashboard: React.FC = () => {
                     });
 
                     if (error) {
+                        await addNotification({
+                            title: 'Check-in failed',
+                            body: error.message || 'We could not check you in at office.',
+                            type: 'attendance',
+                        });
                          Alert.alert("Check-In Failed", error.message);
                     } else {
                         refresh();
+                        await addNotification({
+                            title: 'Checked in at office',
+                            body: 'Attendance marked successfully. Have a productive day!',
+                            type: 'attendance',
+                        });
                         Alert.alert("Welcome!", "Checked in at Office 🏢");
                     }
                 } else {
@@ -152,9 +178,19 @@ export const Dashboard: React.FC = () => {
                                         address: 'Remote'
                                     });
                                     if (error) {
+                                        await addNotification({
+                                            title: 'WFH check-in failed',
+                                            body: error.message || 'Unable to mark Work From Home.',
+                                            type: 'attendance',
+                                        });
                                          Alert.alert("Error", error.message);
                                     } else {
                                         refresh();
+                                        await addNotification({
+                                            title: 'Marked as Work From Home',
+                                            body: 'You were away from office location during check-in.',
+                                            type: 'location',
+                                        });
                                         Alert.alert("Done", "Marked as Work From Home.");
                                     }
                                 } 
@@ -178,9 +214,19 @@ export const Dashboard: React.FC = () => {
                                     address: 'Remote (No Office Set)'
                                 });
                                 if (error) {
+                                    await addNotification({
+                                        title: 'WFH check-in failed',
+                                        body: error.message || 'Unable to check in right now.',
+                                        type: 'attendance',
+                                    });
                                     Alert.alert("Error", error.message);
                                 } else {
                                     refresh();
+                                    await addNotification({
+                                        title: 'Checked in as Work From Home',
+                                        body: 'No office location is set on your profile yet.',
+                                        type: 'system',
+                                    });
                                 }
                             }
                         }
@@ -189,6 +235,11 @@ export const Dashboard: React.FC = () => {
             }
 
         } catch (error) {
+            await addNotification({
+                title: 'Location verification failed',
+                body: 'Could not verify your location while checking attendance.',
+                type: 'location',
+            });
             Alert.alert("Error", "Could not verify location.");
         } finally {
             setIsSubmittingAttendance(false);

@@ -86,12 +86,21 @@ Deno.serve(async (req: Request) => {
     const serializedMembers = (members ?? []).map((member: any) => {
       const profile = member.user_profiles;
       const attendance = attendanceByUserId.get(member.user_id);
+      const dayOfWeek = new Date(today).getDay();
 
-      let attendanceStatus = 'not_checked_in';
+      let attendanceStatus = 'home';
       if (attendance?.status === 'present') {
         attendanceStatus = 'office';
       } else if (attendance?.status === 'wfh') {
         attendanceStatus = 'home';
+      } else if (attendance?.status === 'absent') {
+        attendanceStatus = 'home';
+      } else if (attendance?.status === 'leave') {
+        attendanceStatus = 'leave';
+      } else if (attendance?.status === 'holiday') {
+        attendanceStatus = 'holiday';
+      } else if (!attendance && (dayOfWeek === 0 || dayOfWeek === 6)) {
+        attendanceStatus = 'weekend';
       }
 
       return {

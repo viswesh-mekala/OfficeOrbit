@@ -4,6 +4,7 @@ import * as Notifications from 'expo-notifications';
 import { callApi } from './api/apiClient';
 import { clockIn } from './AttendanceService';
 import { getDistanceFromLatLonInMeters } from '../utils/locationUtils';
+import { addNotification } from './NotificationService';
 
 export const GEOFENCE_TASK = 'GEOFENCE_TASK';
 
@@ -88,7 +89,17 @@ TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }: any) => {
 
                     if (checkInError) {
                         console.error('[Background] Auto-Check-In Failed:', checkInError.message);
+                        await addNotification({
+                            title: 'Auto check-in failed',
+                            body: checkInError.message || 'Automatic office check-in could not be completed.',
+                            type: 'automation',
+                        });
                     } else {
+                        await addNotification({
+                            title: 'Auto check-in completed',
+                            body: 'You arrived at office and attendance was marked automatically.',
+                            type: 'automation',
+                        });
                         await Notifications.scheduleNotificationAsync({
                             content: {
                                 title: "📍 You've arrived!",
@@ -101,6 +112,11 @@ TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }: any) => {
             } else {
                 // OUTSIDE geofence
                 if (todayLog && !todayLog.check_out && todayLog.status === 'present') {
+                    await addNotification({
+                        title: 'Outside office boundary detected',
+                        body: 'Location appears outside office area while you are checked in.',
+                        type: 'location',
+                    });
                     // Future: Debounced auto-checkout logic
                 }
             }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getTodayAttendance, getWeeklyAttendance, AttendanceLog } from '../services/AttendanceService';
 import { useAuth } from '../store/AuthContext';
+import { useFocusEffect } from 'expo-router';
 
 /**
  * Hook for attendance state management.
@@ -44,6 +45,12 @@ export const useAttendance = () => {
         load();
         return () => { mounted = false; };
     }, [fetchAttendance]);
+
+    useFocusEffect(
+        useCallback(() => {
+            fetchAttendance();
+        }, [fetchAttendance])
+    );
 
     return {
         todayLog,
