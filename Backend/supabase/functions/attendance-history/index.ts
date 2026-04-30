@@ -21,7 +21,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const { data, error } = await supabase
-        .from('attendance_logs')
+        .from('attendance_records')
         .select('*')
         .eq('user_id', user.id)
         .order('date', { ascending: false })
@@ -29,7 +29,12 @@ Deno.serve(async (req: Request) => {
 
     if (error) throw error;
 
-    return successResponse(data || []);
+    const serialized = (data || []).map((row: any) => ({
+      ...row,
+      location_check_in: row.check_in_location ?? null,
+      duration_minutes: row.total_minutes ?? 0,
+    }));
+    return successResponse(serialized);
 
   } catch (error: any) {
     if (error.message === 'Unauthorized') {

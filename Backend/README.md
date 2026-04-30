@@ -8,8 +8,7 @@ Supabase-powered backend for user profiles and attendance tracking.
 Backend/
 ├── supabase/
 │   ├── migrations/     # Database schema migrations
-│   ├── functions/      # Edge Functions (serverless)
-│   └── seed.sql        # Initial data
+│   └── functions/      # Edge Functions (serverless)
 ├── docs/
 │   └── api.md          # API documentation
 └── .env                # Environment variables

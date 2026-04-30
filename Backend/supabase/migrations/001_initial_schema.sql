@@ -54,32 +54,34 @@ CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- 5. Create attendance_logs table
--- Matches the Edge Function queries (check-in, check-out, attendance-today, attendance-history)
-CREATE TABLE IF NOT EXISTS public.attendance_logs (
+-- 5. Create attendance_records table
+-- Canonical attendance table used by Edge Functions.
+CREATE TABLE IF NOT EXISTS public.attendance_records (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES public.user_profiles(id) ON DELETE CASCADE,
     date DATE NOT NULL DEFAULT CURRENT_DATE,
     check_in TIMESTAMPTZ,
     check_out TIMESTAMPTZ,
     status TEXT DEFAULT 'absent' CHECK (status IN ('present', 'absent', 'late', 'half-day', 'wfh', 'leave', 'holiday')),
-    location_check_in JSONB, -- { address: string, at_office: boolean }
-    duration_minutes INTEGER DEFAULT 0,
+    check_in_location JSONB, -- { address: string, at_office: boolean }
+    check_out_location JSONB,
+    is_wfh BOOLEAN DEFAULT FALSE,
+    total_minutes INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, date)
 );
 
-ALTER TABLE public.attendance_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.attendance_records ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can view own attendance"
-    ON public.attendance_logs FOR SELECT
+    ON public.attendance_records FOR SELECT
     USING (auth.uid() = user_id);
 
 CREATE POLICY "Users can insert own attendance"
-    ON public.attendance_logs FOR INSERT
+    ON public.attendance_records FOR INSERT
     WITH CHECK (auth.uid() = user_id);
 
 CREATE POLICY "Users can update own attendance"
-    ON public.attendance_logs FOR UPDATE
+    ON public.attendance_records FOR UPDATE
     USING (auth.uid() = user_id)
     WITH CHECK (auth.uid() = user_id);

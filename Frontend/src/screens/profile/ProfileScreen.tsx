@@ -112,8 +112,8 @@ const SectionCard = ({
     </Animated.View>
 );
 
-/* ─────────── WFH Period Options ─────────── */
-const WFH_PERIODS = [
+/* ─────────── Office Target Period Options ─────────── */
+const OFFICE_TARGET_PERIODS = [
     { label: 'Per Week', value: 'week' },
     { label: 'Per Month', value: 'month' },
 ];
@@ -140,8 +140,8 @@ export const Profile: React.FC = () => {
     const [officeStart, setOfficeStart] = useState(new Date());
     const [officeEnd, setOfficeEnd] = useState(new Date());
     const [minimumLoginTime, setMinimumLoginTime] = useState('');
-    const [wfhDays, setWfhDays] = useState('');
-    const [wfhPeriod, setWfhPeriod] = useState<'week' | 'month'>('week');
+    const [officeTargetDays, setOfficeTargetDays] = useState('');
+    const [officeTargetPeriod, setOfficeTargetPeriod] = useState<'week' | 'month'>('week');
     const [showStartPicker, setShowStartPicker] = useState(false);
     const [showEndPicker, setShowEndPicker] = useState(false);
     const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -161,8 +161,12 @@ export const Profile: React.FC = () => {
                     ? String(Math.round(profile.minimum_login_time_minutes / 60))
                     : '8'
             );
-            setWfhDays(profile.wfh_days != null ? String(profile.wfh_days) : '0');
-            setWfhPeriod(profile.wfh_period || 'week');
+            setOfficeTargetDays(
+                profile.office_days_target != null
+                    ? String(profile.office_days_target)
+                    : (profile.wfh_days != null ? String(profile.wfh_days) : '0')
+            );
+            setOfficeTargetPeriod(profile.office_target_period || profile.wfh_period || 'week');
         }
     }, [profile]);
 
@@ -205,8 +209,12 @@ export const Profile: React.FC = () => {
                     ? String(Math.round(profile.minimum_login_time_minutes / 60))
                     : '8'
             );
-            setWfhDays(profile.wfh_days != null ? String(profile.wfh_days) : '0');
-            setWfhPeriod(profile.wfh_period || 'week');
+            setOfficeTargetDays(
+                profile.office_days_target != null
+                    ? String(profile.office_days_target)
+                    : (profile.wfh_days != null ? String(profile.wfh_days) : '0')
+            );
+            setOfficeTargetPeriod(profile.office_target_period || profile.wfh_period || 'week');
         }
         setIsEditing(false);
     };
@@ -366,8 +374,8 @@ export const Profile: React.FC = () => {
             office_window_start: formatTimeForDB(officeStart),
             office_window_end: formatTimeForDB(officeEnd),
             minimum_login_time_minutes: loginTimeMinutes,
-            wfh_days: parseInt(wfhDays || '0'),
-            wfh_period: wfhPeriod,
+            office_days_target: parseInt(officeTargetDays || '0'),
+            office_target_period: officeTargetPeriod,
         });
 
         setIsSaving(false);
@@ -472,8 +480,8 @@ export const Profile: React.FC = () => {
                                 <View style={styles.statDivider} />
                                 <StatChip
                                     icon="home-outline"
-                                    label="WFH"
-                                    value={`${profile.wfh_days ?? 0} days/${profile.wfh_period === 'month' ? 'mo' : 'wk'}`}
+                                    label="Office Target"
+                                    value={`${profile.office_days_target ?? profile.wfh_days ?? 0} days/${(profile.office_target_period || profile.wfh_period) === 'month' ? 'mo' : 'wk'}`}
                                 />
                             </View>
                         </View>
@@ -501,9 +509,9 @@ export const Profile: React.FC = () => {
                                 />
                             </SectionCard>
 
-                            <SectionCard title="Work From Home" icon="home-outline" iconColor="#4CAF50" delay={300}>
-                                <InfoRow icon="calendar-outline" label="WFH Days" value={profile.wfh_days != null ? String(profile.wfh_days) : '0'} />
-                                <InfoRow icon="repeat-outline" label="Period" value={profile.wfh_period === 'month' ? 'Per Month' : 'Per Week'} />
+                            <SectionCard title="Office Days Target" icon="business-outline" iconColor={theme.colors.primary} delay={300}>
+                                <InfoRow icon="calendar-outline" label="Office Days" value={profile.office_days_target != null ? String(profile.office_days_target) : (profile.wfh_days != null ? String(profile.wfh_days) : '0')} />
+                                <InfoRow icon="repeat-outline" label="Period" value={(profile.office_target_period || profile.wfh_period) === 'month' ? 'Per Month' : 'Per Week'} />
                             </SectionCard>
                         </View>
                     ) : (
@@ -687,43 +695,49 @@ export const Profile: React.FC = () => {
                                 </View>
                             </View>
 
-                            {/* WFH */}
+                            {/* Office Day Target */}
                             <View style={styles.editSection}>
                                 <View style={styles.editSectionHeader}>
-                                    <View style={[styles.editSectionDot, { backgroundColor: '#4CAF50' }]} />
-                                    <Text style={styles.editSectionTitle}>Work From Home</Text>
+                                    <View style={[styles.editSectionDot, { backgroundColor: theme.colors.primary }]} />
+                                    <Text style={styles.editSectionTitle}>Office Days Target</Text>
                                 </View>
                                 <View style={styles.editFieldGroup}>
-                                    <Text style={styles.editFieldLabel}>WFH Days</Text>
+                                    <Text style={styles.editFieldLabel}>Office Days</Text>
                                     <View style={styles.editInputWrapper}>
-                                        <Ionicons name="home-outline" size={16} color="#AAA" style={styles.editInputIcon} />
+                                        <Ionicons name="business-outline" size={16} color="#AAA" style={styles.editInputIcon} />
                                         <TextInput
                                             style={styles.editInput}
-                                            value={wfhDays}
-                                            onChangeText={setWfhDays}
-                                            placeholder="Number of days"
+                                            value={officeTargetDays}
+                                            onChangeText={setOfficeTargetDays}
+                                            placeholder="e.g. 3"
                                             placeholderTextColor="#CCC"
                                             keyboardType="numeric"
-                                            onFocus={() => scrollToY(780)}
+                                            onFocus={() => {
+                                                if (officeTargetDays === '0') setOfficeTargetDays('');
+                                                scrollToY(780);
+                                            }}
+                                            onBlur={() => {
+                                                if (!officeTargetDays.trim()) setOfficeTargetDays('0');
+                                            }}
                                         />
                                     </View>
                                 </View>
                                 <View style={styles.editFieldGroup}>
-                                    <Text style={styles.editFieldLabel}>WFH Period</Text>
+                                    <Text style={styles.editFieldLabel}>Target Period</Text>
                                     <View style={styles.periodRow}>
-                                        {WFH_PERIODS.map((opt) => (
+                                        {OFFICE_TARGET_PERIODS.map((opt) => (
                                             <TouchableOpacity
                                                 key={opt.value}
                                                 style={[
                                                     styles.periodChip,
-                                                    wfhPeriod === opt.value && styles.periodChipActive,
+                                                    officeTargetPeriod === opt.value && styles.periodChipActive,
                                                 ]}
-                                                onPress={() => setWfhPeriod(opt.value as 'week' | 'month')}
+                                                onPress={() => setOfficeTargetPeriod(opt.value as 'week' | 'month')}
                                             >
                                                 <Text
                                                     style={[
                                                         styles.periodChipText,
-                                                        wfhPeriod === opt.value && styles.periodChipTextActive,
+                                                        officeTargetPeriod === opt.value && styles.periodChipTextActive,
                                                     ]}
                                                 >
                                                     {opt.label}
@@ -1152,7 +1166,7 @@ const styles = StyleSheet.create({
         fontWeight: '600',
     },
 
-    /* ── WFH Period chips ── */
+    /* ── Office Target Period chips ── */
     periodRow: {
         flexDirection: 'row',
         gap: 10,

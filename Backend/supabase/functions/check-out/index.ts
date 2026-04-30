@@ -22,7 +22,7 @@ Deno.serve(async (req: Request) => {
     // 1. Get Today's Log (timezone-safe)
     const today = getLocalDate(timezoneOffset);
     const { data: existingLog, error: fetchError } = await supabase
-        .from('attendance_logs')
+        .from('attendance_records')
         .select('*')
         .eq('user_id', user.id)
         .eq('date', today)
@@ -41,10 +41,10 @@ Deno.serve(async (req: Request) => {
     const durationMinutes = calcDurationMinutes(existingLog.check_in, now);
 
     const { data: updatedLog, error: updateError } = await supabase
-        .from('attendance_logs')
+        .from('attendance_records')
         .update({
             check_out: now,
-            duration_minutes: durationMinutes,
+            total_minutes: durationMinutes,
         })
         .eq('id', existingLog.id)
         .select()
@@ -52,7 +52,14 @@ Deno.serve(async (req: Request) => {
 
     if (updateError) throw updateError;
 
-    return successResponse(updatedLog, `Checked out successfully. Duration: ${durationMinutes} minutes.`);
+    const serializedLog = updatedLog
+      ? {
+          ...updatedLog,
+          location_check_in: updatedLog.check_in_location ?? null,
+          duration_minutes: updatedLog.total_minutes ?? 0,
+        }
+      : null;
+    return successResponse(serializedLog, `Checked out successfully. Duration: ${durationMinutes} minutes.`);
 
   } catch (error: any) {
     if (error.message === 'Unauthorized') {

@@ -70,7 +70,7 @@ Deno.serve(async (req: Request) => {
     let attendanceLogs: any[] = [];
     if (memberIds.length > 0) {
       const attendanceResponse = await supabase
-        .from('attendance_logs')
+        .from('attendance_records')
         .select('user_id, status, check_in, check_out')
         .in('user_id', memberIds)
         .eq('date', today);

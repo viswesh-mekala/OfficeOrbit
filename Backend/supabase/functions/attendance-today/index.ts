@@ -22,7 +22,7 @@ Deno.serve(async (req: Request) => {
     const today = getLocalDate(timezoneOffset);
 
     const { data, error } = await supabase
-        .from('attendance_logs')
+        .from('attendance_records')
         .select('*')
         .eq('user_id', user.id)
         .eq('date', today)
@@ -36,7 +36,14 @@ Deno.serve(async (req: Request) => {
       throw error;
     }
 
-    return successResponse(data);
+    const serialized = data
+      ? {
+          ...data,
+          location_check_in: data.check_in_location ?? null,
+          duration_minutes: data.total_minutes ?? 0,
+        }
+      : null;
+    return successResponse(serialized);
 
   } catch (error: any) {
     if (error.message === 'Unauthorized') {

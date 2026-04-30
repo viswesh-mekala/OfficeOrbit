@@ -69,7 +69,7 @@ export const checkProfileComplete = (profile: UserProfile | null): boolean => {
         profile.office_window_start &&
         profile.office_window_end &&
         profile.minimum_login_time_minutes != null &&
-        profile.wfh_days != null &&
-        profile.wfh_period
+        (profile.office_days_target != null || profile.wfh_days != null) &&
+        (profile.office_target_period || profile.wfh_period)
     );
 };

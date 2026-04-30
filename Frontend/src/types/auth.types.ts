@@ -17,6 +17,9 @@ export interface UserProfile {
     office_window_start: string | null;
     office_window_end: string | null;
     minimum_login_time_minutes: number | null;
+    office_days_target: number | null;
+    office_target_period: 'week' | 'month' | null;
+    // Legacy field names retained for backward compatibility.
     wfh_days: number | null;
     wfh_period: 'week' | 'month' | null;
     created_at: string;

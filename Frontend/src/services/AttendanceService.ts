@@ -19,7 +19,7 @@ export interface AttendanceLog {
     duration_minutes: number;
 }
 
-export type AttendanceStatus = 
+export type AttendanceStatus = 'present' | 'wfh' | 'leave' | 'holiday' | 'absent';
 
 // ── Get Today's Attendance ──
 export const getTodayAttendance = async () => {

@@ -21,7 +21,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const { data: existingLog, error: fetchError } = await supabase
-      .from('attendance_logs')
+      .from('attendance_records')
       .select('*')
       .eq('user_id', user.id)
       .eq('date', date)
@@ -38,23 +38,28 @@ Deno.serve(async (req: Request) => {
       if (isOffDayStatus) {
         updatePayload.check_in = null;
         updatePayload.check_out = null;
-        updatePayload.duration_minutes = 0;
-        updatePayload.location_check_in = null;
+        updatePayload.total_minutes = 0;
+        updatePayload.check_in_location = null;
       }
 
       const { data: updatedLog, error: updateError } = await supabase
-        .from('attendance_logs')
+        .from('attendance_records')
         .update(updatePayload)
         .eq('id', existingLog.id)
         .select()
         .single();
 
       if (updateError) throw updateError;
-      return successResponse(updatedLog, 'Attendance day updated');
+      const serializedUpdated = {
+        ...updatedLog,
+        location_check_in: updatedLog.check_in_location ?? null,
+        duration_minutes: updatedLog.total_minutes ?? 0,
+      };
+      return successResponse(serializedUpdated, 'Attendance day updated');
     }
 
     const { data: createdLog, error: createError } = await supabase
-      .from('attendance_logs')
+      .from('attendance_records')
       .insert({
         user_id: user.id,
         date,
@@ -64,7 +69,12 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (createError) throw createError;
-    return successResponse(createdLog, 'Attendance day created');
+    const serializedCreated = {
+      ...createdLog,
+      location_check_in: createdLog.check_in_location ?? null,
+      duration_minutes: createdLog.total_minutes ?? 0,
+    };
+    return successResponse(serializedCreated, 'Attendance day created');
   } catch (error: any) {
     if (error.message === 'Unauthorized') {
       return errorResponse('Unauthorized', 401);

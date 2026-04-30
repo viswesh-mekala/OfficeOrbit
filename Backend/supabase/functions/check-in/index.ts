@@ -54,7 +54,7 @@ Deno.serve(async (req: Request) => {
     // 3. Check if already checked in today (timezone-safe)
     const today = getLocalDate(timezoneOffset);
     const { data: existingLog } = await supabase
-        .from('attendance_logs')
+        .from('attendance_records')
         .select('*')
         .eq('user_id', user.id)
         .eq('date', today)
@@ -66,13 +66,13 @@ Deno.serve(async (req: Request) => {
 
     // 4. Insert Attendance Record — privacy-safe (no raw GPS persisted)
     const { data: newLog, error: insertError } = await supabase
-        .from('attendance_logs')
+        .from('attendance_records')
         .insert({
             user_id: user.id,
             date: today,
             check_in: new Date().toISOString(),
             status: status,
-            location_check_in: {
+            check_in_location: {
               address: atOffice ? 'Verified at Office' : (profile.company_location ? 'Remote' : 'Remote (No Office Set)'),
               at_office: atOffice,
             },
@@ -82,7 +82,14 @@ Deno.serve(async (req: Request) => {
 
     if (insertError) throw insertError;
 
-    return successResponse(newLog, 'Checked in successfully');
+    const serializedLog = newLog
+      ? {
+          ...newLog,
+          location_check_in: newLog.check_in_location ?? null,
+          duration_minutes: newLog.total_minutes ?? 0,
+        }
+      : null;
+    return successResponse(serializedLog, 'Checked in successfully');
 
   } catch (error: any) {
     if (error.message === 'Unauthorized') {
