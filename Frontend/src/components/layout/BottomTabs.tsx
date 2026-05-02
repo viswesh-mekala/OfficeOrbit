@@ -1,11 +1,18 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { theme } from '../../theme/theme';
 import { router, usePathname } from 'expo-router';
+import { moderateScale, scaledFont } from '../../utils/responsive';
 
 export const BottomTabs: React.FC = () => {
     const pathname = usePathname();
+    const insets = useSafeAreaInsets();
+
+    // Dynamic bottom padding: actual device inset (handles 3-button nav, gesture nav, notch)
+    // Minimum 8px so tabs aren't flush against the edge on gesture-nav devices
+    const bottomPad = Math.max(insets.bottom, 8);
 
     const tabs = [
         { name: 'Dashboard', icon: 'grid', route: '/dashboard' },
@@ -15,7 +22,7 @@ export const BottomTabs: React.FC = () => {
     ];
 
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, { paddingBottom: bottomPad }]}>
             {tabs.map((tab) => {
                 const isActive = pathname.startsWith(tab.route);
                 return (
@@ -27,7 +34,7 @@ export const BottomTabs: React.FC = () => {
                     >
                         <Ionicons
                             name={isActive ? tab.icon as any : `${tab.icon}-outline` as any}
-                            size={24}
+                            size={moderateScale(22)}
                             color={isActive ? theme.colors.primary : theme.colors.text.secondary}
                         />
                         <Text style={[styles.label, isActive && styles.activeLabel]}>{tab.name}</Text>
@@ -42,19 +49,19 @@ const styles = StyleSheet.create({
     container: {
         flexDirection: 'row',
         backgroundColor: 'white',
-        paddingVertical: 12,
+        paddingTop: moderateScale(10),
         borderTopWidth: 1,
         borderTopColor: '#F0F0F0',
-        paddingBottom: 20, // Safe area padding
+        // paddingBottom is dynamic via insets — applied inline
     },
     tab: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 4,
+        gap: 3,
     },
     label: {
-        fontSize: 10,
+        fontSize: scaledFont(10),
         color: theme.colors.text.secondary,
         fontWeight: '500',
     },

@@ -429,7 +429,7 @@ export const Profile: React.FC = () => {
                     ref={scrollRef}
                     contentContainerStyle={[
                         styles.scrollContent,
-                        { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 48 : 40 },
+                        { paddingBottom: keyboardHeight > 0 ? 20 : 40 },
                     ]}
                     showsVerticalScrollIndicator={false}
                     keyboardShouldPersistTaps="handled"

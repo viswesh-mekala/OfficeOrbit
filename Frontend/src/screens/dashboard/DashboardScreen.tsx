@@ -728,6 +728,7 @@ export const Dashboard: React.FC = () => {
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardDismissMode="on-drag"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -953,7 +954,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
     paddingTop: 0,
-    paddingBottom: 20,
+    paddingBottom: 32,
   },
   greetingSection: {
     flexDirection: 'row',

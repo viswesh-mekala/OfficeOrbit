@@ -64,7 +64,7 @@ export const requestPermissions = async () => {
 
 export const startBackgroundUpdate = async () => {
     // Android 12+ forbids starting a foreground service when the app is backgrounded.
-    // Only attempt when the app is actively in the foreground.
+    // Silently skip — the task is already registered from when the app was last in foreground.
     if (AppState.currentState !== 'active') return;
 
     const hasPermissions = await requestPermissions();
@@ -87,10 +87,8 @@ export const startBackgroundUpdate = async () => {
             }
         });
     } catch (error: any) {
-        // Gracefully handle the foreground-service-from-background race condition
-        if (error?.message?.includes('foreground service') || error?.message?.includes('background')) {
-            console.warn('LocationService: skipped — app is not in foreground');
-        } else {
+        // Silently handle the foreground-service-from-background race condition
+        if (!error?.message?.includes('foreground service') && !error?.message?.includes('background')) {
             console.error('Error starting background location:', error);
         }
     }

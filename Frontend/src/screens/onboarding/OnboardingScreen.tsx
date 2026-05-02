@@ -995,7 +995,7 @@ export const Onboarding: React.FC = () => {
           ref={scrollRef}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 80 : 40 },
+            { paddingBottom: keyboardHeight > 0 ? 20 : 40 },
           ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps='handled'

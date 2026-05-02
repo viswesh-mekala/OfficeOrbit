@@ -356,7 +356,8 @@ export const Attendance: React.FC = () => {
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        keyboardDismissMode="on-drag"
+        contentContainerStyle={{ paddingBottom: 40 }}
       >
         {/* Calendar Grid */}
         <View style={styles.calendarContainer}>
