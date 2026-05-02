@@ -15,11 +15,43 @@ import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme/theme';
 import {
   AppNotification,
+  AppNotificationType,
   getNotifications,
   markAllNotificationsRead,
   markNotificationRead,
   subscribeNotifications,
 } from '../../services/NotificationService';
+
+/* ── Notification type theme map ── */
+const TYPE_CONFIG: Record<
+  AppNotificationType,
+  { icon: string; color: string; bg: string; label: string }
+> = {
+  attendance: {
+    icon: 'checkmark-circle',
+    color: '#059669',
+    bg: '#ECFDF5',
+    label: 'Attendance',
+  },
+  location: {
+    icon: 'location',
+    color: '#D97706',
+    bg: '#FFFBEB',
+    label: 'Location',
+  },
+  automation: {
+    icon: 'flash',
+    color: '#7C3AED',
+    bg: '#F5F3FF',
+    label: 'Auto',
+  },
+  system: {
+    icon: 'information-circle',
+    color: '#2563EB',
+    bg: '#EFF6FF',
+    label: 'System',
+  },
+};
 
 export const Header: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -41,11 +73,11 @@ export const Header: React.FC = () => {
   );
 
   const panelWidth = useMemo(
-    () => Math.max(180, Math.min(210, Math.floor(screenWidth * 0.48))),
+    () => Math.max(300, Math.min(340, Math.floor(screenWidth * 0.85))),
     [screenWidth],
   );
-  const panelMaxHeight = useMemo(() => Math.floor(screenHeight * 0.6), [screenHeight]);
-  const listMaxHeight = useMemo(() => Math.max(160, panelMaxHeight - 90), [panelMaxHeight]);
+  const panelMaxHeight = useMemo(() => Math.floor(screenHeight * 0.65), [screenHeight]);
+  const listMaxHeight = useMemo(() => Math.max(200, panelMaxHeight - 100), [panelMaxHeight]);
 
   useEffect(() => {
     if (isOpen) {
@@ -140,7 +172,13 @@ export const Header: React.FC = () => {
                   {
                     translateY: panelAnim.interpolate({
                       inputRange: [0, 1],
-                      outputRange: [-8, 0],
+                      outputRange: [-12, 0],
+                    }),
+                  },
+                  {
+                    scale: panelAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.95, 1],
                     }),
                   },
                 ],
@@ -148,23 +186,38 @@ export const Header: React.FC = () => {
             ]}
           >
             <Pressable onPress={(event) => event.stopPropagation()}>
+              {/* Panel Header */}
               <View style={styles.panelHeader}>
+                <View style={styles.panelTitleRow}>
+                  <Ionicons name="notifications" size={16} color={theme.colors.primary} />
+                  <Text style={styles.panelTitle}>Notifications</Text>
+                  {unreadCount > 0 && (
+                    <View style={styles.unreadBadge}>
+                      <Text style={styles.unreadBadgeText}>{unreadCount} new</Text>
+                    </View>
+                  )}
+                </View>
                 <TouchableOpacity
                   onPress={handleMarkAllRead}
                   disabled={notifications.length === 0}
+                  style={styles.markAllBtn}
                 >
+                  <Ionicons name="checkmark-done" size={14} color={theme.colors.primary} />
                   <Text style={styles.markReadText}>Mark all read</Text>
                 </TouchableOpacity>
               </View>
 
               {notifications.length === 0 ? (
                 <View style={styles.emptyState}>
-                  <Ionicons
-                    name='notifications-off-outline'
-                    size={18}
-                    color={theme.colors.text.secondary}
-                  />
-                  <Text style={styles.emptyText}>No notifications yet</Text>
+                  <View style={styles.emptyIcon}>
+                    <Ionicons
+                      name='notifications-off-outline'
+                      size={24}
+                      color='#C9CDD6'
+                    />
+                  </View>
+                  <Text style={styles.emptyTitle}>All caught up!</Text>
+                  <Text style={styles.emptyText}>No notifications to show</Text>
                 </View>
               ) : (
                 <ScrollView
@@ -172,23 +225,51 @@ export const Header: React.FC = () => {
                   showsVerticalScrollIndicator
                   persistentScrollbar
                 >
-                  {notifications.map((item) => (
-                    <TouchableOpacity
-                      key={item.id}
-                      style={styles.item}
-                      onPress={() => markNotificationRead(item.id)}
-                      activeOpacity={0.85}
-                    >
-                      <View style={styles.itemTextBlock}>
-                        <Text style={styles.itemTitle}>{item.title}</Text>
-                        <Text style={styles.itemBody}>{item.body}</Text>
-                        <Text style={styles.itemTime}>
-                          {getRelativeTime(item.createdAt)}
-                        </Text>
-                      </View>
-                      {!item.readAt ? <View style={styles.unreadDot} /> : null}
-                    </TouchableOpacity>
-                  ))}
+                  {notifications.map((item) => {
+                    const cfg = TYPE_CONFIG[item.type] || TYPE_CONFIG.system;
+                    const isUnread = !item.readAt;
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={[
+                          styles.item,
+                          isUnread && styles.itemUnread,
+                        ]}
+                        onPress={() => markNotificationRead(item.id)}
+                        activeOpacity={0.7}
+                      >
+                        {/* Type icon */}
+                        <View style={[styles.itemIcon, { backgroundColor: cfg.bg }]}>
+                          <Ionicons name={cfg.icon as any} size={16} color={cfg.color} />
+                        </View>
+
+                        {/* Content */}
+                        <View style={styles.itemContent}>
+                          <View style={styles.itemTopRow}>
+                            <Text style={[styles.itemTitle, isUnread && styles.itemTitleUnread]} numberOfLines={1}>
+                              {item.title}
+                            </Text>
+                            <Text style={styles.itemTime}>
+                              {getRelativeTime(item.createdAt)}
+                            </Text>
+                          </View>
+                          <Text style={styles.itemBody} numberOfLines={2}>
+                            {item.body}
+                          </Text>
+                          <View style={styles.itemMeta}>
+                            <View style={[styles.typePill, { backgroundColor: cfg.bg }]}>
+                              <Text style={[styles.typePillText, { color: cfg.color }]}>
+                                {cfg.label}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+
+                        {/* Unread indicator */}
+                        {isUnread && <View style={styles.unreadDot} />}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </ScrollView>
               )}
             </Pressable>
@@ -267,90 +348,172 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '700',
   },
+
+  /* ── Panel ── */
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.16)',
-    alignItems: 'flex-end',
-    paddingTop: 92,
-    paddingRight: 12,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingTop: 88,
+    paddingHorizontal: 16,
   },
   panel: {
     backgroundColor: '#FFF',
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: '#E7EAF2',
     shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 8,
-    paddingVertical: 8,
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 12,
+    overflow: 'hidden',
   },
   panelHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-    paddingTop: 6,
-    paddingBottom: 7,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#EEF1F7',
+    borderBottomColor: '#F1F3F8',
+  },
+  panelTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  panelTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: theme.colors.text.primary,
+  },
+  unreadBadge: {
+    backgroundColor: '#EEF2FF',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  unreadBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: theme.colors.primary,
+  },
+  markAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   markReadText: {
     color: theme.colors.primary,
-    fontSize: 15,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '600',
   },
+
+  /* ── List ── */
   list: {
-    minHeight: 120,
+    minHeight: 80,
   },
   item: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F5FA',
+    borderBottomColor: '#F5F6FA',
+    backgroundColor: '#FFF',
   },
-  itemTextBlock: {
+  itemUnread: {
+    backgroundColor: '#FAFBFF',
+  },
+  itemIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  itemContent: {
     flex: 1,
+    gap: 3,
+  },
+  itemTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
   itemTitle: {
-    fontSize: 11,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     color: theme.colors.text.primary,
-    marginBottom: 2,
+    flex: 1,
+    marginRight: 8,
+  },
+  itemTitleUnread: {
+    fontWeight: '700',
+    color: '#111827',
   },
   itemBody: {
-    fontSize: 10,
-    color: theme.colors.text.secondary,
-    lineHeight: 15,
+    fontSize: 12,
+    color: '#6B7280',
+    lineHeight: 17,
   },
   itemTime: {
-    marginTop: 5,
     fontSize: 10,
-    color: '#8E95A3',
+    color: '#9CA3AF',
     fontWeight: '500',
+  },
+  itemMeta: {
+    flexDirection: 'row',
+    marginTop: 4,
+  },
+  typePill: {
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  typePillText: {
+    fontSize: 9,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   unreadDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
     backgroundColor: theme.colors.primary,
-    marginTop: 5,
+    marginTop: 6,
   },
+
+  /* ── Empty ── */
   emptyState: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 26,
+    paddingVertical: 36,
+    gap: 6,
+  },
+  emptyIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  emptyTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.colors.text.primary,
   },
   emptyText: {
-    color: theme.colors.text.secondary,
-    fontSize: 13,
+    color: '#9CA3AF',
+    fontSize: 12,
     fontWeight: '500',
   },
 });

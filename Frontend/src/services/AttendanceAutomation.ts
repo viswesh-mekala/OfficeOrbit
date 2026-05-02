@@ -91,6 +91,11 @@ export async function processAttendanceLocationSamples(
 ) {
   if (!samples || samples.length === 0) return;
 
+  // Skip weekends — no auto-attendance on Saturday/Sunday.
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  if (dayOfWeek === 0 || dayOfWeek === 6) return;
+
   const sorted = sortSamplesAsc(samples).filter((s) => !!s?.coords);
   if (sorted.length === 0) return;
 
