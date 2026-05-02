@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { getTodayAttendance, getWeeklyAttendance, AttendanceLog } from '../services/AttendanceService';
 import { useAuth } from '../store/AuthContext';
 import { useFocusEffect } from 'expo-router';
+import { setActiveUserIdForStreakStorage } from '../utils/wfoStreak';
 
 /**
  * Hook for attendance state management.
@@ -17,14 +18,16 @@ export const useAttendance = () => {
 
     const fetchAttendance = useCallback(async () => {
         if (!user?.id || !isProfileComplete) return;
+
+        await setActiveUserIdForStreakStorage(user.id);
         
         try {
             // Fetch today's status (no userId — JWT handles it)
             const { data: todayData } = await getTodayAttendance();
             setTodayLog(todayData || null);
 
-            // Fetch weekly stats
-            const { data: weeklyData } = await getWeeklyAttendance(7);
+            // Enough history for multi-week / multi-month streaks (dashboard computes streak locally).
+            const { data: weeklyData } = await getWeeklyAttendance(400);
             setWeeklyLogs(weeklyData || []);
         } catch (_error) {}
     }, [user?.id, isProfileComplete]);

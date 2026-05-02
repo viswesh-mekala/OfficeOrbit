@@ -12,6 +12,7 @@ import {
     ActivityIndicator,
     Dimensions,
     Keyboard,
+    Modal,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,6 +23,7 @@ import * as Location from 'expo-location';
 import { theme } from '../../theme/theme';
 import { Button } from '../../components/common/Button';
 import { useAuth } from '../../store/AuthContext';
+import { useToast } from '../../components/common/Toast';
 import { CompanyLocation } from '../../types/auth.types';
 import { parseTimeToDate, formatTimeDisplay, formatTimeForDB, formatTime } from '../../utils/time';
 import {
@@ -123,8 +125,10 @@ const OFFICE_TARGET_PERIODS = [
    ═══════════════════════════════════════════════════════ */
 export const Profile: React.FC = () => {
     const { profile, user, updateProfile, signOut } = useAuth();
+    const { showToast } = useToast();
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [showLogoutModal, setShowLogoutModal] = useState(false);
     const scrollRef = useRef<ScrollView>(null);
     const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const searchSequenceRef = useRef(0);
@@ -344,10 +348,11 @@ export const Profile: React.FC = () => {
             placesSessionTokenRef.current = `officeorbit-profile-${Date.now()}`;
             Keyboard.dismiss();
         } catch (_error) {
-            Alert.alert(
-                'Location search unavailable',
-                'We could not load that office location fully. Please try another suggestion.',
-            );
+            showToast({
+                title: 'Location unavailable',
+                message: 'Could not load that location. Try another suggestion.',
+                variant: 'error',
+            });
         } finally {
             setIsSearchingLocation(false);
         }
@@ -355,12 +360,12 @@ export const Profile: React.FC = () => {
 
     const handleSave = async () => {
         if (!username.trim() || !company.trim() || !companyLocation.trim()) {
-            Alert.alert('Required Fields', 'Please fill in all required fields.');
+            showToast({ title: 'Required fields', message: 'Please fill in all required fields.', variant: 'warning' });
             return;
         }
 
         if (!selectedLocation) {
-            Alert.alert('Select location', 'Please choose your office from the location suggestions.');
+            showToast({ title: 'Select location', message: 'Choose your office from the suggestions.', variant: 'warning' });
             return;
         }
 
@@ -381,17 +386,20 @@ export const Profile: React.FC = () => {
         setIsSaving(false);
 
         if (error) {
-            Alert.alert('Error', error.message);
+            showToast({ title: 'Save failed', message: error.message, variant: 'error' });
         } else {
+            showToast({ title: 'Profile saved', message: 'Changes saved successfully.', variant: 'success' });
             setIsEditing(false);
         }
     };
 
     const handleLogout = () => {
-        Alert.alert('Sign Out', 'Are you sure you want to sign out of OfficeOrbit?', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Sign Out', style: 'destructive', onPress: signOut },
-        ]);
+        setShowLogoutModal(true);
+    };
+
+    const confirmLogout = async () => {
+        setShowLogoutModal(false);
+        await signOut();
     };
 
     if (!profile) {
@@ -409,6 +417,7 @@ export const Profile: React.FC = () => {
     });
 
     return (
+        <>
         <View style={styles.container}>
             <StatusBar style="light" />
             <KeyboardAvoidingView
@@ -777,6 +786,46 @@ export const Profile: React.FC = () => {
                 </ScrollView>
             </KeyboardAvoidingView>
         </View>
+
+        {/* ── Themed Logout Modal ── */}
+        <Modal
+            visible={showLogoutModal}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowLogoutModal(false)}
+        >
+            <TouchableOpacity
+                style={styles.logoutOverlay}
+                activeOpacity={1}
+                onPress={() => setShowLogoutModal(false)}
+            >
+                <TouchableOpacity activeOpacity={1} style={styles.logoutModalCard}>
+                    <View style={styles.logoutModalIcon}>
+                        <Ionicons name="log-out-outline" size={28} color="#E53935" />
+                    </View>
+                    <Text style={styles.logoutModalTitle}>Sign Out</Text>
+                    <Text style={styles.logoutModalMessage}>
+                        Are you sure you want to sign out of OfficeOrbit? You'll need to log in again to access your account.
+                    </Text>
+                    <View style={styles.logoutModalActions}>
+                        <TouchableOpacity
+                            style={styles.logoutModalCancel}
+                            onPress={() => setShowLogoutModal(false)}
+                        >
+                            <Text style={styles.logoutModalCancelText}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.logoutModalConfirm}
+                            onPress={confirmLogout}
+                        >
+                            <Ionicons name="log-out-outline" size={16} color="#FFF" />
+                            <Text style={styles.logoutModalConfirmText}>Sign Out</Text>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </TouchableOpacity>
+        </Modal>
+        </>
     );
 };
 
@@ -1244,5 +1293,83 @@ const styles = StyleSheet.create({
         fontSize: 11,
         color: 'rgba(0,0,0,0.2)',
         fontWeight: '500',
+    },
+
+    /* ── Logout Modal ── */
+    logoutOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.4)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24,
+    },
+    logoutModalCard: {
+        backgroundColor: '#FFFFFF',
+        borderRadius: 20,
+        padding: 24,
+        width: '100%',
+        maxWidth: 340,
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.12,
+        shadowRadius: 24,
+        elevation: 8,
+    },
+    logoutModalIcon: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: '#FEE2E2',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 16,
+    },
+    logoutModalTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: '#111827',
+        marginBottom: 8,
+    },
+    logoutModalMessage: {
+        fontSize: 14,
+        color: '#6B7280',
+        textAlign: 'center',
+        lineHeight: 20,
+        marginBottom: 24,
+    },
+    logoutModalActions: {
+        flexDirection: 'row',
+        gap: 12,
+        width: '100%',
+    },
+    logoutModalCancel: {
+        flex: 1,
+        paddingVertical: 12,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    logoutModalCancelText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: '#374151',
+    },
+    logoutModalConfirm: {
+        flex: 1,
+        flexDirection: 'row',
+        paddingVertical: 12,
+        borderRadius: 12,
+        backgroundColor: '#E53935',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+    },
+    logoutModalConfirmText: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#FFFFFF',
     },
 });

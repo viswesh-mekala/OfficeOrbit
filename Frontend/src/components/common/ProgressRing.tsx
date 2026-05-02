@@ -8,7 +8,13 @@ interface ProgressRingProps {
     currentDays: number;
     totalDays: number;
     status: string;
-    severity?: 'perfect' | 'good' | 'warn' | 'bad' | 'neutral';
+    severity?:
+        | 'excellent'
+        | 'great'
+        | 'ok'
+        | 'warn'
+        | 'bad'
+        | 'neutral';
 }
 
 export const ProgressRing: React.FC<ProgressRingProps> = ({
@@ -16,7 +22,7 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({
     currentDays,
     totalDays,
     status,
-    severity = 'good',
+    severity = 'ok',
 }) => {
     const size = 140; // Reduced from 180
     const strokeWidth = 12; // Reduced from 15
@@ -31,38 +37,44 @@ export const ProgressRing: React.FC<ProgressRingProps> = ({
     const ringStroke = theme.colors.primary;
 
     const tone =
-        severity === 'perfect'
+        severity === 'excellent'
             ? {
-                  pillBg: '#FFFBEB',
-                  pillText: '#B45309',
+                  pillBg: '#DCFCE7',
+                  pillText: '#166534',
               }
-            : severity === 'good'
+            : severity === 'great'
               ? {
                     pillBg: '#E8F5E9',
                     pillText: theme.colors.success,
                 }
-              : severity === 'warn'
+              : severity === 'ok'
                 ? {
-                      pillBg: '#FFF7ED',
-                      pillText: '#C2410C',
+                      pillBg: '#ECFDF5',
+                      pillText: '#15803D',
                   }
-                : severity === 'bad'
+                : severity === 'warn'
                   ? {
-                        pillBg: '#FEF2F2',
-                        pillText: '#B91C1C',
+                        pillBg: '#FFF7ED',
+                        pillText: '#C2410C',
                     }
-                  : {
-                        pillBg: '#F3F4F6',
-                        pillText: '#475569',
-                    };
+                  : severity === 'bad'
+                    ? {
+                          pillBg: '#FEF2F2',
+                          pillText: '#B91C1C',
+                      }
+                    : {
+                          pillBg: '#F3F4F6',
+                          pillText: '#475569',
+                      };
 
     return (
         <View style={styles.container}>
             {/**
-             * Label is intentionally static ("WFO") for product branding, but the **value** is computed in
-             * `DashboardScreen` as: office days / (office + wfh days). Leaves/holidays/absences are excluded.
+             * Monthly tracker ring (office-share month-to-date).
+             * Value is computed in `DashboardScreen` as: office days / (office + wfh days) for the month so far.
+             * Leaves/holidays/absences are excluded from that fraction.
              */}
-            <Text style={styles.headerTitle}>WFO COMPLIANCE</Text>
+            <Text style={styles.headerTitle}>MONTHLY TRACKER</Text>
             <View style={styles.ringContainer}>
                 <Svg width={size} height={size}>
                     {/* Background Circle */}

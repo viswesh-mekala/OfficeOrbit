@@ -8,6 +8,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from '../store/AuthContext';
 import { theme } from '../theme/theme';
 import { TransitionOverlay } from '../components/common/TransitionOverlay';
+import { ToastProvider } from '../components/common/Toast';
 import { runAttendanceOneShot, startBackgroundUpdate, stopBackgroundUpdate } from '../services/LocationService';
 import '../services/BackgroundTasks'; // Register the task
 
@@ -27,7 +28,9 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
-        <RootLayoutNav />
+        <ToastProvider>
+          <RootLayoutNav />
+        </ToastProvider>
       </AuthProvider>
     </GestureHandlerRootView>
   );
@@ -41,6 +44,8 @@ function RootLayoutNav() {
   const segments = useSegments();
   const hasNavigated = useRef(false);
   const didRunOneShotForUser = useRef<string | null>(null);
+  /** Track previous session to detect login/logout transitions */
+  const prevSessionRef = useRef<typeof session>(undefined as any);
 
   // Monitor Auth for Background Location
   useEffect(() => {
@@ -66,11 +71,17 @@ function RootLayoutNav() {
   useEffect(() => {
     if (loading) return;
 
+    const wasLoggedIn = !!prevSessionRef.current;
+    const isLoggedIn = !!session;
+    prevSessionRef.current = session;
+
+    // Detect auth transition — fresh start like big-tech apps
+    const justLoggedOut = wasLoggedIn && !isLoggedIn;
+
     if (!session) {
       // ── NOT LOGGED IN ──
-      // Allow landing, signin, signup, verify-otp, auth-callback
-      // Redirect away from all protected routes
-      if (!isPublicRoute && currentRoute !== 'onboarding') {
+      // On logout or if on a protected route, redirect to landing
+      if (justLoggedOut || (!isPublicRoute && currentRoute !== 'onboarding')) {
         router.replace('/' as any);
       }
     } else {
@@ -79,13 +90,11 @@ function RootLayoutNav() {
 
       if (!isProfileComplete) {
         // Profile incomplete → Force onboarding
-        // Redirect from ANY page except onboarding itself
         if (currentRoute !== 'onboarding') {
           router.replace('/onboarding' as any);
         }
       } else {
         // Profile complete → Production experience
-        // Redirect away from auth routes AND landing page
         if (isAuthRoute || currentRoute === 'index' || currentRoute === 'onboarding') {
           router.replace('/dashboard' as any);
         }

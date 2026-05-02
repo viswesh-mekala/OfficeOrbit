@@ -1,10 +1,15 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   ActivityIndicator,
+  RefreshControl,
+  Alert,
+  Modal,
+  TouchableOpacity,
+  Pressable,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { theme } from '../../theme/theme';
@@ -14,10 +19,10 @@ import { ProgressRing } from '../../components/common/ProgressRing';
 import { MetricCard } from '../../components/common/MetricCard';
 import { AlertCard } from '../../components/common/AlertCard';
 import { WeeklyStatCard } from '../../components/common/WeeklyStatCard';
+import { useToast } from '../../components/common/Toast';
 
 import { useAuth } from '../../store/AuthContext';
-
-import { RefreshControl, Alert } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useAttendance } from '../../hooks/useAttendance';
 import { SlideAction } from '../../components/common/SlideAction';
@@ -28,9 +33,16 @@ import {
   isCalendarManagedDay,
   liveDurationMinutes,
 } from '../../utils/attendancePolicy';
+import {
+  evaluateWfoStreak,
+  loadWfoStreakState,
+  parseLocalDate,
+  saveWfoStreakState,
+} from '../../utils/wfoStreak';
 
 export const Dashboard: React.FC = () => {
   const { user: authUser, profile, loading: authLoading } = useAuth();
+  const { showToast } = useToast();
   const {
     todayLog,
     weeklyLogs,
@@ -39,9 +51,35 @@ export const Dashboard: React.FC = () => {
     refreshing,
   } = useAttendance();
   const [isSubmittingAttendance, setIsSubmittingAttendance] = useState(false);
+  const [streakModalVisible, setStreakModalVisible] = useState(false);
+  const [persistedStreakCount, setPersistedStreakCount] = useState(0);
 
   // Fallback data
   const userName = profile?.username || authUser?.user_metadata?.name || 'User';
+
+  const mergedAttendanceLogs = useMemo(() => {
+    const map = new Map<string, (typeof weeklyLogs)[number]>();
+    for (const log of weeklyLogs) {
+      if (log?.date) map.set(log.date, log);
+    }
+    if (todayLog?.date) {
+      map.set(todayLog.date, todayLog);
+    }
+    return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }, [weeklyLogs, todayLog]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const boot = async () => {
+      const persisted = await loadWfoStreakState();
+      if (cancelled) return;
+      setPersistedStreakCount(persisted.streakCount ?? 0);
+    };
+    boot();
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.id]);
 
   // Time-aware greeting
   const getGreeting = () => {
@@ -118,10 +156,11 @@ export const Dashboard: React.FC = () => {
     setIsSubmittingAttendance(true);
 
     if (calendarManagedToday) {
-      Alert.alert(
-        'Attendance already set',
-        'This day has a status without check-in/out times. Update it from Attendance, or clear it before using swipe check-in/out.',
-      );
+      showToast({
+        title: 'Attendance already set',
+        message: 'Update it from Attendance, or clear it before using swipe.',
+        variant: 'warning',
+      });
       setIsSubmittingAttendance(false);
       return;
     }
@@ -137,7 +176,7 @@ export const Dashboard: React.FC = () => {
               error.message || 'We could not check you out. Please try again.',
             type: 'attendance',
           });
-          Alert.alert('Error', error.message || 'Failed to check out.');
+          showToast({ title: 'Check-out failed', message: error.message || 'Please try again.', variant: 'error' });
         } else {
           refresh();
           await addNotification({
@@ -145,7 +184,7 @@ export const Dashboard: React.FC = () => {
             body: 'Your attendance has been marked for today.',
             type: 'attendance',
           });
-          Alert.alert('Success', 'Checked out successfully! 👋');
+          showToast({ title: 'Checked out successfully 👋', message: 'Your attendance has been marked.', variant: 'success' });
         }
         return;
       }
@@ -158,7 +197,7 @@ export const Dashboard: React.FC = () => {
           body: 'Enable location access to continue check-in.',
           type: 'location',
         });
-        Alert.alert('Permission', 'Location access is needed to check in.');
+        showToast({ title: 'Location required', message: 'Enable location access to check in.', variant: 'warning' });
         return;
       }
 
@@ -195,7 +234,7 @@ export const Dashboard: React.FC = () => {
               body: error.message || 'We could not check you in at office.',
               type: 'attendance',
             });
-            Alert.alert('Check-In Failed', error.message);
+            showToast({ title: 'Check-in failed', message: error.message, variant: 'error' });
           } else {
             refresh();
             await addNotification({
@@ -203,7 +242,7 @@ export const Dashboard: React.FC = () => {
               body: 'Attendance marked successfully. Have a productive day!',
               type: 'attendance',
             });
-            Alert.alert('Welcome!', 'Checked in at Office 🏢');
+            showToast({ title: 'Welcome! 🏢', message: 'Checked in at office', variant: 'success' });
           }
         } else {
           // Far from office
@@ -226,7 +265,7 @@ export const Dashboard: React.FC = () => {
                       body: error.message || 'Unable to mark Work From Home.',
                       type: 'attendance',
                     });
-                    Alert.alert('Error', error.message);
+                    showToast({ title: 'WFH check-in failed', message: error.message, variant: 'error' });
                   } else {
                     refresh();
                     await addNotification({
@@ -234,7 +273,7 @@ export const Dashboard: React.FC = () => {
                       body: 'You were away from office location during check-in.',
                       type: 'location',
                     });
-                    Alert.alert('Done', 'Marked as Work From Home.');
+                    showToast({ title: 'Marked as WFH', message: 'You were away from office location.', variant: 'success' });
                   }
                 },
               },
@@ -262,7 +301,7 @@ export const Dashboard: React.FC = () => {
                     body: error.message || 'Unable to check in right now.',
                     type: 'attendance',
                   });
-                  Alert.alert('Error', error.message);
+                  showToast({ title: 'Check-in failed', message: error.message, variant: 'error' });
                 } else {
                   refresh();
                   await addNotification({
@@ -282,7 +321,7 @@ export const Dashboard: React.FC = () => {
         body: 'Could not verify your location while checking attendance.',
         type: 'location',
       });
-      Alert.alert('Error', 'Could not verify location.');
+      showToast({ title: 'Location error', message: 'Could not verify your location.', variant: 'error' });
     } finally {
       setIsSubmittingAttendance(false);
     }
@@ -311,12 +350,6 @@ export const Dashboard: React.FC = () => {
     const currentMonth = now.getMonth();
     const currentDay = now.getDate();
 
-    // Business days elapsed this month (Mon–Fri)
-    let businessDaysElapsed = 0;
-    for (let d = 1; d <= currentDay; d++) {
-      const day = new Date(currentYear, currentMonth, d).getDay();
-      if (day !== 0 && day !== 6) businessDaysElapsed++;
-    }
 
     // Total business days in this month
     const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -375,22 +408,16 @@ export const Dashboard: React.FC = () => {
         : 0;
 
     /**
-     * Compare current office-share vs the user's configured office-day target.
+     * Monthly tracker (big ring): compares **month-to-date office-share** vs a
+     * **required office share** derived from the user's configured target.
      *
-     * Required office-share proxy:
-     * - Read target days from `office_days_target` (fallback: legacy `wfh_days` migration field name)
-     * - Interpret target over `office_target_period` (fallback: legacy `wfh_period`)
-     * - Required % ~= targetOfficeDays / businessDaysInSelectedWindow (Mon–Fri count)
+     * Office-share (tracked%): present / (present + wfh), excluding leave/holiday.
      *
-     * Then compare delta points vs required:
-     * - delta <= 0: On Track
-     * - delta in (-10, 0): Needs Attention (orange)
-     * - delta <= -10: Serious Attention (red)
-     * - delta >= +20: Perfect (gold)
+     * Required%: a stable ratio that does NOT fluctuate as the period progresses.
+     *   - Weekly target:  requiredPercent = targetDays / weekdays-in-week  (e.g. 3/5 = 60%)
+     *   - Monthly target: requiredPercent = targetDays / weekdays-in-month (e.g. 12/21 ≈ 57%)
      *
-     * Window selection:
-     * - If period is `week`, compare against **current week Mon–Sun** ratio (matches Weekly card).
-     * - If period is `month`, compare against **month-to-date** ratio (matches monthly ring inputs).
+     * Status bands use margins around required% (±10 / ±20 points), see below.
      */
     const targetPeriod =
       profile?.office_target_period || profile?.wfh_period || 'week';
@@ -401,35 +428,21 @@ export const Dashboard: React.FC = () => {
           ? profile.wfh_days
           : 0;
 
-    const businessDaysWeekWindow = weekDates.filter((d) => {
-      const day = new Date(d).getDay();
-      return day !== 0 && day !== 6;
-    }).length;
-
-    let businessDaysMonthToDate = 0;
-    for (let d = 1; d <= currentDay; d++) {
-      const day = new Date(currentYear, currentMonth, d).getDay();
-      if (day !== 0 && day !== 6) businessDaysMonthToDate++;
-    }
-
-    const businessDaysInTargetWindow =
-      targetPeriod === 'month' ? businessDaysMonthToDate : businessDaysWeekWindow;
-
-    const clampedTargetDays =
-      rawTargetDays > 0
-        ? Math.min(rawTargetDays, Math.max(1, businessDaysInTargetWindow))
-        : 0;
-
+    // Required office % = target days / total workdays in the period.
+    // Weekly example: 3 target / 5 weekdays = 60%
+    // Monthly example: 12 target / 21 weekdays ≈ 57%
     const requiredPercent =
-      clampedTargetDays > 0 && businessDaysInTargetWindow > 0
-        ? Math.min(
-            100,
-            Math.round((clampedTargetDays / businessDaysInTargetWindow) * 100),
-          )
+      rawTargetDays > 0
+        ? targetPeriod === 'month'
+          ? totalBusinessDays > 0
+            ? Math.min(100, Math.round((rawTargetDays / totalBusinessDays) * 100))
+            : null
+          : weekWorkdays > 0
+            ? Math.min(100, Math.round((rawTargetDays / weekWorkdays) * 100))
+            : null
         : null;
 
-    const trackedPercent =
-      targetPeriod === 'month' ? monthCompliancePercent : weekPercent;
+    const trackedPercent = monthCompliancePercent;
 
     const deltaPoints =
       requiredPercent == null
@@ -437,62 +450,139 @@ export const Dashboard: React.FC = () => {
         : Math.round(trackedPercent - requiredPercent);
 
     let complianceStatus = 'Set office target';
-    let complianceSeverity: 'perfect' | 'good' | 'warn' | 'bad' | 'neutral' =
-      'neutral';
+    let complianceSeverity:
+      | 'excellent'
+      | 'great'
+      | 'ok'
+      | 'warn'
+      | 'bad'
+      | 'neutral' = 'neutral';
 
-    if (deltaPoints == null || rawTargetDays <= 0) {
+    if (deltaPoints == null || rawTargetDays <= 0 || requiredPercent == null) {
       complianceStatus = 'Set office target';
       complianceSeverity = 'neutral';
-    } else if (trackedPercent >= 100 && deltaPoints >= 20) {
-      complianceStatus = 'Perfect';
-      complianceSeverity = 'perfect';
-    } else if (deltaPoints >= 0) {
+    } else if (trackedPercent >= requiredPercent + 20) {
+      complianceStatus = 'Excellent 🔥👌';
+      complianceSeverity = 'excellent';
+    } else if (trackedPercent >= requiredPercent + 10) {
+      complianceStatus = 'Good Keep going 👏';
+      complianceSeverity = 'great';
+    } else if (trackedPercent >= requiredPercent) {
       complianceStatus = 'On Track';
-      complianceSeverity = 'good';
-    } else if (deltaPoints > -10) {
-      complianceStatus = 'Needs Attention';
-      complianceSeverity = 'warn';
-    } else {
-      complianceStatus = 'Serious Attention';
+      complianceSeverity = 'ok';
+    } else if (trackedPercent < requiredPercent - 20) {
+      complianceStatus = 'Serious attention required ⚠️';
       complianceSeverity = 'bad';
+    } else {
+      // Covers [required-20, required) including the [-20,-10) gap as “warning band”
+      complianceStatus = 'Needs attention';
+      complianceSeverity = 'warn';
     }
 
-    const ringPercent =
-      complianceSeverity === 'perfect' ? 100 : Math.min(trackedPercent, 100);
+    const ringPercent = Math.min(trackedPercent, 100);
 
-    const ringOfficeDays =
-      targetPeriod === 'month' ? officeDays : weekOfficeDays;
-    const ringWorkedDays =
-      targetPeriod === 'month' ? workedDays : weekWorkedDays;
+    const ringOfficeDays = officeDays;
+    const ringWorkedDays = workedDays;
 
-    // Current streak — consecutive attendance days (working backwards from today)
-    let streak = 0;
-    const sortedDates = weeklyLogs
-      .filter((l) => l.status === 'present' || l.status === 'wfh')
-      .map((l) => l.date)
-      .sort()
-      .reverse();
+    const streakPeriodType =
+      profile?.office_target_period || profile?.wfh_period || 'week';
+    const streakRawTargetDays =
+      profile?.office_days_target != null
+        ? profile.office_days_target
+        : profile?.wfh_days != null
+          ? profile.wfh_days
+          : 0;
 
-    let checkDate = new Date(currentYear, currentMonth, currentDay);
-    for (const dateStr of sortedDates) {
-      // Skip weekends when counting streak
-      while (checkDate.getDay() === 0 || checkDate.getDay() === 6) {
-        checkDate.setDate(checkDate.getDate() - 1);
+    const streakEval =
+      streakRawTargetDays > 0
+        ? evaluateWfoStreak({
+            logs: mergedAttendanceLogs,
+            periodType: streakPeriodType === 'month' ? 'month' : 'week',
+            rawTargetDays: streakRawTargetDays,
+          })
+        : null;
+
+    const streakCanonical = streakEval?.streakCount ?? 0;
+
+    let streakBucketWeekdays = 0;
+    if (streakEval?.periodType === 'month') {
+      const [ys, ms] = streakEval.currentPeriodKey.split('-');
+      const y = Number(ys);
+      const m = Number(ms) - 1;
+      const start = new Date(y, m, 1);
+      const end = new Date(y, m + 1, 0);
+      let c = 0;
+      for (let cur = new Date(start); cur <= end; cur.setDate(cur.getDate() + 1)) {
+        const dow = cur.getDay();
+        if (dow !== 0 && dow !== 6) c++;
       }
-      const expected = checkDate.toISOString().split('T')[0];
-      if (dateStr === expected) {
-        streak++;
-        checkDate.setDate(checkDate.getDate() - 1);
-      } else if (dateStr < expected) {
-        break;
+      streakBucketWeekdays = c;
+    } else if (streakEval) {
+      const mon = parseLocalDate(streakEval.currentPeriodKey);
+      if (mon) {
+        const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
+        let c = 0;
+        for (let cur = new Date(mon); cur <= sun; cur.setDate(cur.getDate() + 1)) {
+          const dow = cur.getDay();
+          if (dow !== 0 && dow !== 6) c++;
+        }
+        streakBucketWeekdays = c;
       }
     }
 
-    // Alert
-    const remainingWorkdays = weekWorkdays - weekWorkedDays;
-    const needsMore =
-      remainingWorkdays > 0 &&
-      (requiredPercent == null ? weekPercent < 50 : (deltaPoints ?? 0) < 0);
+    const streakRequiredNow =
+      streakEval?.requiredOfficeDays != null && streakBucketWeekdays > 0
+        ? Math.min(streakEval.requiredOfficeDays, Math.max(1, streakBucketWeekdays))
+        : null;
+
+    const streakTitle =
+      streakPeriodType === 'month' ? 'WFO streak (month)' : 'WFO streak (week)';
+
+    const streakSubtext =
+      streakEval && streakRequiredNow != null
+        ? `${streakEval.currentPeriodOfficeDays}/${streakRequiredNow} this ${streakEval.periodType}`
+        : 'Set office target';
+
+    // ── Alert / Insight card ──
+    // Variant driven by the same complianceSeverity as the monthly tracker ring.
+    // Days deficit & remaining business days are still computed for the subtitle copy.
+    const alertPeriodLabel = targetPeriod === 'month' ? 'month' : 'week';
+    let alertCurrentOfficeDays = 0;
+    let alertTargetDays = rawTargetDays;
+    let alertDaysNeeded = 0;
+    let alertRemainingDays = 0;
+
+    if (rawTargetDays > 0) {
+      const todayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`;
+
+      if (targetPeriod === 'month') {
+        alertCurrentOfficeDays = officeDays;
+        alertDaysNeeded = Math.max(0, rawTargetDays - officeDays);
+        for (let d = currentDay; d <= daysInMonth; d++) {
+          const dow = new Date(currentYear, currentMonth, d).getDay();
+          if (dow !== 0 && dow !== 6) alertRemainingDays++;
+        }
+      } else {
+        alertCurrentOfficeDays = weekOfficeDays;
+        alertTargetDays = rawTargetDays;
+        alertDaysNeeded = Math.max(0, rawTargetDays - weekOfficeDays);
+        alertRemainingDays = weekDates.filter((d) => {
+          if (d < todayStr) return false;
+          const dow = new Date(d + 'T12:00:00').getDay();
+          return dow !== 0 && dow !== 6;
+        }).length;
+      }
+    }
+
+    // Map complianceSeverity → alert variant (single source of truth)
+    const alertVariant: 'on_track' | 'behind' | 'critical' | 'no_target' =
+      complianceSeverity === 'neutral'
+        ? 'no_target'
+        : complianceSeverity === 'bad'
+          ? 'critical'
+          : complianceSeverity === 'warn'
+            ? 'behind'
+            : 'on_track'; // excellent | great | ok
 
     return {
       compliance: {
@@ -510,14 +600,14 @@ export const Dashboard: React.FC = () => {
       },
       weekly: {
         percent: Math.min(weekPercent, 100),
-        label: 'Office Ratio',
+        label: 'Weekly tracker',
         subtext: `${weekOfficeDays}/${weekWorkedDays || 0} Office Days`,
       },
       metrics: [
         {
-          title: 'Current Streak',
-          value: String(streak),
-          subtext: 'Days',
+          title: streakTitle,
+          value: String(streakCanonical),
+          subtext: streakSubtext,
           icon: 'flame' as const,
           color: '#FF9800',
         },
@@ -528,19 +618,105 @@ export const Dashboard: React.FC = () => {
           icon: 'calendar' as const,
         },
       ],
-      alert: needsMore
-        ? {
-            title: 'Gap Detected',
-            message: `You need ${remainingWorkdays} more day${remainingWorkdays > 1 ? 's' : ''} this week to stay on track.`,
-            action: '',
-          }
-        : {
-            title: 'Looking Good! 🎉',
-            message: `You're on track this week.`,
-            action: '',
-          },
+      alert: {
+        variant: alertVariant,
+        daysNeeded: alertDaysNeeded,
+        periodLabel: alertPeriodLabel,
+        currentOfficeDays: alertCurrentOfficeDays,
+        targetDays: alertTargetDays,
+        remainingBusinessDays: alertRemainingDays,
+      },
+      streakEval,
     };
-  }, [weeklyLogs, profile]);
+  }, [weeklyLogs, profile, mergedAttendanceLogs, todayLog]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const sync = async () => {
+      const persisted = await loadWfoStreakState();
+      if (cancelled) return;
+
+      const evalSnapshot = dashboardMetrics.streakEval;
+      if (!evalSnapshot?.lastProcessedPeriodKey) return;
+
+      const canonical = evalSnapshot.streakCount;
+      const lastKey = evalSnapshot.lastProcessedPeriodKey;
+
+      if (
+        persisted.lastProcessedPeriodKey !== lastKey &&
+        canonical > (persisted.streakCount ?? 0)
+      ) {
+        await saveWfoStreakState({
+          streakCount: canonical,
+          lastProcessedPeriodKey: lastKey,
+        });
+        if (!cancelled) setPersistedStreakCount(canonical);
+      } else if (
+        persisted.lastProcessedPeriodKey !== lastKey &&
+        canonical === 0 &&
+        evalSnapshot.lastClosedOk === false
+      ) {
+        await saveWfoStreakState({
+          streakCount: 0,
+          lastProcessedPeriodKey: lastKey,
+        });
+        if (!cancelled) setPersistedStreakCount(0);
+      }
+    };
+
+    sync();
+    return () => {
+      cancelled = true;
+    };
+  }, [dashboardMetrics.streakEval]);
+
+  const streakEvalSnapshot = dashboardMetrics.streakEval;
+
+  let streakBucketWeekdaysLive = 0;
+  if (streakEvalSnapshot?.periodType === 'month') {
+    const [ys, ms] = streakEvalSnapshot.currentPeriodKey.split('-');
+    const y = Number(ys);
+    const m = Number(ms) - 1;
+    const start = new Date(y, m, 1);
+    const end = new Date(y, m + 1, 0);
+    let c = 0;
+    for (let cur = new Date(start); cur <= end; cur.setDate(cur.getDate() + 1)) {
+      const dow = cur.getDay();
+      if (dow !== 0 && dow !== 6) c++;
+    }
+    streakBucketWeekdaysLive = c;
+  } else if (streakEvalSnapshot) {
+    const mon = parseLocalDate(streakEvalSnapshot.currentPeriodKey);
+    if (mon) {
+      const sun = new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + 6);
+      let c = 0;
+      for (let cur = new Date(mon); cur <= sun; cur.setDate(cur.getDate() + 1)) {
+        const dow = cur.getDay();
+        if (dow !== 0 && dow !== 6) c++;
+      }
+      streakBucketWeekdaysLive = c;
+    }
+  }
+
+  const streakRequiredNowLive =
+    streakEvalSnapshot?.requiredOfficeDays != null && streakBucketWeekdaysLive > 0
+      ? Math.min(
+          streakEvalSnapshot.requiredOfficeDays,
+          Math.max(1, streakBucketWeekdaysLive),
+        )
+      : null;
+
+  const streakCanonicalLive = streakEvalSnapshot?.streakCount ?? 0;
+  /** Consecutive completed periods that met the office-day minimum */
+  const streakClosedPeriodsLive = Math.max(persistedStreakCount, streakCanonicalLive);
+  /**
+   * Card total = closed-period streak + office weekdays logged so far this open period,
+   * so the count rises with each qualifying office day (not only when the period closes).
+   */
+  const streakDisplayedTotal =
+    streakEvalSnapshot?.requiredOfficeDays != null
+      ? streakClosedPeriodsLive + streakEvalSnapshot.currentPeriodOfficeDays
+      : 0;
 
   return (
     <View style={styles.container}>
@@ -647,7 +823,32 @@ export const Dashboard: React.FC = () => {
           <View style={styles.metricsRow}>
             {dashboardMetrics.metrics.map((metric, index) => (
               <View key={index} style={styles.metricWrapper}>
-                <MetricCard {...metric} icon={metric.icon as any} />
+                {metric.icon === 'flame' ? (
+                  <View style={styles.metricCardWrap}>
+                    <MetricCard
+                      {...metric}
+                      icon={metric.icon as any}
+                      value={
+                        index === 0 ? String(streakDisplayedTotal) : metric.value
+                      }
+                    />
+                    <TouchableOpacity
+                      accessibilityRole="button"
+                      accessibilityLabel="Streak details"
+                      style={styles.metricMenuBtn}
+                      onPress={() => setStreakModalVisible(true)}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Ionicons
+                        name="ellipsis-vertical"
+                        size={18}
+                        color={theme.colors.text.secondary}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <MetricCard {...metric} icon={metric.icon as any} />
+                )}
               </View>
             ))}
           </View>
@@ -671,6 +872,70 @@ export const Dashboard: React.FC = () => {
           </View>
         </Animated.View>
       </ScrollView>
+
+      <Modal
+        visible={streakModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setStreakModalVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setStreakModalVisible(false)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Office streak</Text>
+            <ScrollView
+              style={styles.modalScroll}
+              showsVerticalScrollIndicator={false}
+            >
+              {streakEvalSnapshot ? (
+                <>
+                  <Text style={styles.modalLead}>
+                    Flame total = periods in a row that hit your office weekday goal,
+                    plus office weekdays logged so far this period (Mon–Fri).
+                  </Text>
+                  <Text style={styles.modalBullet}>
+                    • Counts Mon–Fri office (present) only — not weekends, leave, or
+                    holiday.
+                  </Text>
+                  <Text style={styles.modalBullet}>
+                    • Bucket: weekly Mon–Sun or calendar month (Profile). Goal never
+                    exceeds weekdays in that bucket. Checked when the period ends.
+                  </Text>
+                  <Text style={styles.modalBullet}>
+                    • Reset: finish a period below goal → streak drops to 0 (only
+                    this score; calendar history stays).
+                  </Text>
+                  <Text style={styles.modalBullet}>
+                    •{' '}
+                    {streakEvalSnapshot.periodType === 'month' ? 'Month' : 'Week'} mode
+                    · Goal {streakEvalSnapshot.requiredOfficeDays ?? '—'} office
+                    weekdays · Now {streakEvalSnapshot.currentPeriodOfficeDays}/
+                    {streakRequiredNowLive ?? '—'} · Periods streak{' '}
+                    {streakClosedPeriodsLive} · Card {String(streakDisplayedTotal)}
+                  </Text>
+                  {streakEvalSnapshot.lastClosedPeriodKey ? (
+                    <Text style={styles.modalBulletMuted}>
+                      Last closed {streakEvalSnapshot.periodType}:{' '}
+                      {streakEvalSnapshot.lastClosedPeriodKey},{' '}
+                      {streakEvalSnapshot.lastClosedOfficeDays ?? '—'} office days —{' '}
+                      {streakEvalSnapshot.lastClosedOk ? 'met goal' : 'under goal'}.
+                    </Text>
+                  ) : null}
+                </>
+              ) : (
+                <Text style={styles.modalLead}>
+                  Set office weekdays + week/month mode in Profile to enable this.
+                </Text>
+              )}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.modalClose}
+              onPress={() => setStreakModalVisible(false)}
+            >
+              <Text style={styles.modalCloseText}>Close</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 };
@@ -757,5 +1022,69 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 12,
     lineHeight: 16,
+  },
+  metricCardWrap: {
+    position: 'relative',
+  },
+  metricMenuBtn: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    padding: 4,
+    borderRadius: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    padding: 18,
+  },
+  modalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E7EAF2',
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: theme.colors.text.primary,
+    marginBottom: 10,
+  },
+  modalScroll: {
+    maxHeight: 280,
+  },
+  modalLead: {
+    fontSize: 13,
+    color: theme.colors.text.primary,
+    lineHeight: 19,
+    marginBottom: 10,
+    fontWeight: '600',
+  },
+  modalBullet: {
+    fontSize: 13,
+    color: theme.colors.text.secondary,
+    lineHeight: 19,
+    marginBottom: 8,
+    paddingLeft: 2,
+  },
+  modalBulletMuted: {
+    fontSize: 12,
+    color: theme.colors.text.secondary,
+    lineHeight: 17,
+    marginTop: 4,
+    opacity: 0.85,
+  },
+  modalClose: {
+    alignSelf: 'flex-end',
+    marginTop: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  modalCloseText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: theme.colors.primary,
   },
 });

@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { theme } from '../../theme/theme';
 import Animated, { FadeInUp } from 'react-native-reanimated';
 import { Calendar, DateData, LocaleConfig } from 'react-native-calendars';
+import { useToast } from '../../components/common/Toast';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import {
   getWeeklyAttendance,
@@ -93,6 +94,7 @@ const STATUS_THEME: Record<
 
 export const Attendance: React.FC = () => {
   const router = useRouter();
+  const { showToast } = useToast();
   // Current date for default state
   const today = new Date();
   const todayString = formatLocalDate(today);
@@ -189,17 +191,25 @@ export const Attendance: React.FC = () => {
     const marks = { ...weekendDates, ...presentDates };
     if (selectedDate) {
       const existing = marks[selectedDate]?.customStyles;
+      const hasStatus = !!existing?.container?.backgroundColor;
       marks[selectedDate] = {
         ...(marks[selectedDate] || {}),
         customStyles: {
-          container: {
-            backgroundColor: existing?.container?.backgroundColor || '#111827',
-            borderRadius: 8,
-            borderWidth: 2,
-            borderColor: '#111827',
-          },
+          container: hasStatus
+            ? {
+                // Status color preserved, dark ring shows selection
+                backgroundColor: existing.container.backgroundColor,
+                borderRadius: 8,
+                borderWidth: 2.5,
+                borderColor: '#111827',
+              }
+            : {
+                // No status — solid dark background
+                backgroundColor: '#111827',
+                borderRadius: 8,
+              },
           text: {
-            color: existing?.text?.color || '#FFFFFF',
+            color: hasStatus ? existing.text?.color || '#0F172A' : '#FFFFFF',
             fontWeight: '800',
           },
         },
@@ -291,16 +301,17 @@ export const Attendance: React.FC = () => {
       setShowEditModal(false);
       const { error } = await updateAttendanceDay(selectedDate, status);
       if (error) {
-        Alert.alert('Update Failed', error.message);
+        showToast({ title: 'Update failed', message: error.message, variant: 'error' });
         return;
       }
       await fetchAttendance();
-      Alert.alert('Saved', 'Day status updated successfully.');
+      showToast({ title: 'Status updated', message: 'Day status saved successfully.', variant: 'success' });
     } catch {
-      Alert.alert(
-        'Update Failed',
-        'Could not update this day. Please try again.',
-      );
+      showToast({
+        title: 'Update failed',
+        message: 'Could not update this day. Please try again.',
+        variant: 'error',
+      });
     } finally {
       setUpdatingDay(false);
     }

@@ -14,7 +14,8 @@ Deno.serve(async (req: Request) => {
     try {
       const body = await req.json();
       if (body.limit && typeof body.limit === 'number' && body.limit > 0) {
-        limit = Math.min(body.limit, 90); // Cap at 90 days
+        // Allow deeper history for streak/analytics views (still bounded for safety).
+        limit = Math.min(body.limit, 400);
       }
     } catch {
       // No body — use default

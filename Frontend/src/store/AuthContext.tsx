@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { router } from 'expo-router';
+
+
 
 // Types
 import { UserProfile, AuthContextType } from '../types/auth.types';
@@ -145,7 +146,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setProfile(null);
         setUser(null);
         setSession(null);
-        router.replace('/' as any);
+        // Navigation handled by _layout.tsx auth effect (single source of truth)
     };
 
     return (
