@@ -8,7 +8,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from '../store/AuthContext';
 import { theme } from '../theme/theme';
 import { TransitionOverlay } from '../components/common/TransitionOverlay';
-import { startBackgroundUpdate, stopBackgroundUpdate } from '../services/LocationService';
+import { runAttendanceOneShot, startBackgroundUpdate, stopBackgroundUpdate } from '../services/LocationService';
 import '../services/BackgroundTasks'; // Register the task
 
 export default function RootLayout() {
@@ -40,13 +40,20 @@ function RootLayoutNav() {
   const { session, loading, profileLoading, isProfileComplete } = useAuth();
   const segments = useSegments();
   const hasNavigated = useRef(false);
+  const didRunOneShotForUser = useRef<string | null>(null);
 
   // Monitor Auth for Background Location
   useEffect(() => {
     if (session && isProfileComplete) {
       startBackgroundUpdate();
+      const userId = (session as any)?.user?.id ?? 'unknown';
+      if (didRunOneShotForUser.current !== userId) {
+        didRunOneShotForUser.current = userId;
+        runAttendanceOneShot();
+      }
     } else {
       stopBackgroundUpdate();
+      didRunOneShotForUser.current = null;
     }
   }, [session, isProfileComplete]);
 

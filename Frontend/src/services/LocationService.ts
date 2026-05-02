@@ -2,6 +2,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Alert } from 'react-native';
 import { GEOFENCE_TASK } from './BackgroundTasks';
+import { processAttendanceLocationSamples } from './AttendanceAutomation';
 
 export const requestPermissions = async () => {
     const { status: fgStatus } = await Location.requestForegroundPermissionsAsync();
@@ -31,7 +32,7 @@ export const startBackgroundUpdate = async () => {
         await Location.startLocationUpdatesAsync(GEOFENCE_TASK, {
             accuracy: Location.Accuracy.Balanced, // Balanced for battery (approx 100m)
             distanceInterval: 100, // Update every 100 meters
-            deferredUpdatesInterval: 15 * 60 * 1000, // Minimum 15 minutes between updates (Android)
+            deferredUpdatesInterval: 10 * 60 * 1000, // Minimum 10 minutes between updates (Android)
             deferredUpdatesDistance: 100, // Minimum 100 meters
             foregroundService: {
                 notificationTitle: "OfficeOrbit is active",
@@ -40,6 +41,20 @@ export const startBackgroundUpdate = async () => {
         });
     } catch (error) {
         console.error('Error starting background location:', error);
+    }
+};
+
+export const runAttendanceOneShot = async () => {
+    const hasPermissions = await requestPermissions();
+    if (!hasPermissions) return;
+
+    try {
+        const sample = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.High,
+        });
+        await processAttendanceLocationSamples([sample], 'oneshot');
+    } catch (error) {
+        console.error('Error running attendance one-shot:', error);
     }
 };
 
