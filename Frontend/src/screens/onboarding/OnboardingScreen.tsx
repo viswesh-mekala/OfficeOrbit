@@ -255,8 +255,8 @@ export const Onboarding: React.FC = () => {
     d.setHours(18, 0, 0, 0);
     return d;
   });
-  const [minimumLoginHours, setMinimumLoginHours] = useState('8');
-  const [officeTargetDays, setOfficeTargetDays] = useState('0');
+  const [minimumLoginHours, setMinimumLoginHours] = useState(8);
+  const [officeTargetDays, setOfficeTargetDays] = useState(0);
   const [officeTargetPeriod, setOfficeTargetPeriod] = useState<
     'week' | 'month'
   >('week');
@@ -454,9 +454,6 @@ export const Onboarding: React.FC = () => {
   // ---- Submit ----
   const handleSubmit = async () => {
     setIsSubmitting(true);
-    const loginTimeMinutes = Math.round(
-      parseFloat(minimumLoginHours || '8') * 60
-    );
 
     const formatTime = (d: Date) => {
       return `${d.getHours().toString().padStart(2, '0')}:${d
@@ -471,8 +468,8 @@ export const Onboarding: React.FC = () => {
       company_location: selectedLocation,
       office_window_start: formatTime(officeStart),
       office_window_end: formatTime(officeEnd),
-      minimum_login_time_minutes: loginTimeMinutes,
-      office_days_target: parseInt(officeTargetDays || '0'),
+      minimum_login_time_minutes: Math.round(minimumLoginHours * 60),
+      office_days_target: officeTargetDays,
       office_target_period: officeTargetPeriod,
     });
 
@@ -873,24 +870,30 @@ export const Onboarding: React.FC = () => {
         <Text style={styles.scheduleCardLabel}>
           <Ionicons
             name='hourglass-outline'
-            size={14}
+            size={13}
             color={theme.colors.primary}
           />{' '}
           Minimum Daily Login
         </Text>
-        <View style={styles.loginTimeRow}>
-          <TextInput
-            style={styles.loginTimeInput}
-            value={minimumLoginHours}
-            onChangeText={setMinimumLoginHours}
-            keyboardType='numeric'
-            placeholder='8'
-            placeholderTextColor='#CCC'
-            onFocus={() => scrollToY(200)}
-            returnKeyType='done'
-            onSubmitEditing={() => Keyboard.dismiss()}
-          />
-          <Text style={styles.loginTimeUnit}>hours / day</Text>
+        <View style={styles.stepperRow}>
+          <TouchableOpacity
+            style={styles.stepperBtn}
+            onPress={() => setMinimumLoginHours((h) => Math.max(1, h - 1))}
+            activeOpacity={0.7}
+          >
+            <Ionicons name='remove' size={20} color={theme.colors.primary} />
+          </TouchableOpacity>
+          <View style={styles.stepperValueBox}>
+            <Text style={[styles.stepperValue, { color: theme.colors.primary }]}>{minimumLoginHours}</Text>
+            <Text style={styles.stepperUnit}>hrs / day</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.stepperBtn}
+            onPress={() => setMinimumLoginHours((h) => Math.min(24, h + 1))}
+            activeOpacity={0.7}
+          >
+            <Ionicons name='add' size={20} color={theme.colors.primary} />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -899,31 +902,31 @@ export const Onboarding: React.FC = () => {
         <Text style={styles.scheduleCardLabel}>
           <Ionicons
             name='business-outline'
-            size={14}
-            color={theme.colors.primary}
+            size={13}
+            color='#4CAF50'
           />{' '}
           Office Days Target
         </Text>
         <View style={styles.wfhRow}>
-          <View style={styles.wfhDaysGroup}>
-            <TextInput
-              style={styles.wfhDaysInput}
-              value={officeTargetDays}
-              onChangeText={setOfficeTargetDays}
-              keyboardType='numeric'
-              placeholder='e.g. 3'
-              placeholderTextColor='#CCC'
-              onFocus={() => {
-                if (officeTargetDays === '0') setOfficeTargetDays('');
-                scrollToY(320);
-              }}
-              onBlur={() => {
-                if (!officeTargetDays.trim()) setOfficeTargetDays('0');
-              }}
-              returnKeyType='done'
-              onSubmitEditing={() => Keyboard.dismiss()}
-            />
-            <Text style={styles.wfhDaysSuffix}>days</Text>
+          <View style={styles.stepperRow}>
+            <TouchableOpacity
+              style={[styles.stepperBtn, { borderColor: '#4CAF50' }]}
+              onPress={() => setOfficeTargetDays((d) => Math.max(0, d - 1))}
+              activeOpacity={0.7}
+            >
+              <Ionicons name='remove' size={20} color='#4CAF50' />
+            </TouchableOpacity>
+            <View style={styles.stepperValueBox}>
+              <Text style={[styles.stepperValue, { color: '#4CAF50' }]}>{officeTargetDays}</Text>
+              <Text style={styles.stepperUnit}>days</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.stepperBtn, { borderColor: '#4CAF50' }]}
+              onPress={() => setOfficeTargetDays((d) => Math.min(31, d + 1))}
+              activeOpacity={0.7}
+            >
+              <Ionicons name='add' size={20} color='#4CAF50' />
+            </TouchableOpacity>
           </View>
           <View style={styles.periodChipRow}>
             {OFFICE_TARGET_PERIODS.map((opt) => (
@@ -939,7 +942,7 @@ export const Onboarding: React.FC = () => {
               >
                 <Ionicons
                   name={opt.icon as any}
-                  size={14}
+                  size={13}
                   color={
                     officeTargetPeriod === opt.value
                       ? '#FFF'
@@ -1380,9 +1383,10 @@ const styles = StyleSheet.create({
   scheduleCardLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#777',
-    marginBottom: 12,
-    letterSpacing: 0.5,
+    color: '#555',
+    marginBottom: 14,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
   },
   timeRow: {
     flexDirection: 'row',
@@ -1434,7 +1438,39 @@ const styles = StyleSheet.create({
   },
   loginTimeUnit: { fontSize: 13, color: '#999', fontWeight: '500' },
 
-  // WFH
+  // Stepper control
+  stepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 0,
+  },
+  stepperBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: theme.colors.primary,
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperValueBox: {
+    minWidth: 80,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  stepperValue: {
+    fontSize: 26,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  stepperUnit: {
+    fontSize: 11,
+    color: '#AAA',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  // WFH (kept for layout wrapper)
   wfhRow: { gap: 12 },
   wfhDaysGroup: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   wfhDaysInput: {

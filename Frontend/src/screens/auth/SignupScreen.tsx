@@ -1,5 +1,15 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, KeyboardAvoidingView, Platform, TouchableOpacity, Dimensions, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+    View,
+    Text,
+    StyleSheet,
+    TextInput,
+    KeyboardAvoidingView,
+    Platform,
+    TouchableOpacity,
+    Keyboard,
+    ScrollView,
+} from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import Animated, { FadeInUp, FadeIn } from 'react-native-reanimated';
@@ -10,41 +20,88 @@ import { Button } from '../../components/common/Button';
 import { GoogleIcon } from '../../components/icons/GoogleIcon';
 import { useAuth } from '../../store/AuthContext';
 
-const { width } = Dimensions.get('window');
+// ── Password strength rules ──────────────────────────────
+type RuleKey = 'length' | 'upper' | 'number' | 'symbol';
+
+const PASSWORD_RULES: { key: RuleKey; label: string; test: (p: string) => boolean }[] = [
+    { key: 'length',  label: 'At least 8 characters',       test: (p) => p.length >= 8 },
+    { key: 'upper',   label: 'One uppercase letter (A–Z)',   test: (p) => /[A-Z]/.test(p) },
+    { key: 'number',  label: 'One number (0–9)',             test: (p) => /[0-9]/.test(p) },
+    { key: 'symbol',  label: 'One symbol (!@#$…)',           test: (p) => /[^A-Za-z0-9]/.test(p) },
+];
+
+const getStrengthMeta = (passed: number) => {
+    if (passed === 0) return { label: '',          color: '#E0E0E0', barColor: '#E0E0E0', bars: 0 };
+    if (passed === 1) return { label: 'Weak',      color: '#D32F2F', barColor: '#D32F2F', bars: 1 };
+    if (passed === 2) return { label: 'Fair',      color: '#FF9800', barColor: '#FF9800', bars: 2 };
+    if (passed === 3) return { label: 'Good',      color: '#2196F3', barColor: '#2196F3', bars: 3 };
+    return              { label: 'Strong 🔒',      color: '#4CAF50', barColor: '#4CAF50', bars: 4 };
+};
+
+// ── User-already-exists detection ─────────────────────────
+// authService throws the raw 'user already registered' string (bypasses friendlyErrorMessage)
+const isUserExistsError = (msg: string) =>
+    /already registered|already exists|user already|email already/i.test(msg);
 
 export const Signup: React.FC = () => {
     const { signUpWithEmail, signInWithGoogle } = useAuth();
-    const [username, setUsername] = useState('');
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
+    const [username, setUsername]         = useState('');
+    const [email, setEmail]               = useState('');
+    const [password, setPassword]         = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [showRules, setShowRules]       = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError]               = useState<string | null>(null);
+    const [userExists, setUserExists]     = useState(false);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
 
+    // ── Keyboard height tracker ──
+    useEffect(() => {
+        const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+        const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+        const showSub = Keyboard.addListener(showEvent, (e) =>
+            setKeyboardHeight(e.endCoordinates.height)
+        );
+        const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+        return () => { showSub.remove(); hideSub.remove(); };
+    }, []);
+
+    // ── Password strength ──
+    const ruleResults = PASSWORD_RULES.map((r) => ({ ...r, passed: r.test(password) }));
+    const passedCount = ruleResults.filter((r) => r.passed).length;
+    const strength    = getStrengthMeta(password.length > 0 ? passedCount : 0);
+
+    // ── Handlers ──
     const handleSignup = async () => {
-        if (!username || !email || !password) {
+        setUserExists(false);
+        if (!username.trim() || !email.trim() || !password) {
             setError('Please fill in all fields');
             return;
         }
-        if (password.length < 6) {
-            setError('Password must be at least 6 characters');
+        if (passedCount < 3) {
+            setError('Please choose a stronger password');
+            setShowRules(true);
             return;
         }
         setError(null);
         setIsSubmitting(true);
-        
-        const result = await signUpWithEmail(email, password, username);
-        
+
+        const result = await signUpWithEmail(email.trim(), password, username.trim());
+
         if (result.error) {
-            setError(result.error.message);
+            const msg = result.error.message;
+            if (isUserExistsError(msg)) {
+                setUserExists(true);
+                setError(null);
+            } else {
+                setError(msg);
+            }
             setIsSubmitting(false);
         } else {
             setIsSubmitting(false);
-            // Navigate to OTP verification screen
-            // Use replace so back button goes to signin, not signup form
             router.replace({
                 pathname: '/verify-otp' as const,
-                params: { email },
+                params: { email: email.trim() },
             } as any);
         }
     };
@@ -52,97 +109,123 @@ export const Signup: React.FC = () => {
     const handleGoogleSignIn = async () => {
         setError(null);
         setIsSubmitting(true);
-        
         const { error } = await signInWithGoogle();
-        
         setIsSubmitting(false);
-        if (error) {
-            setError(error.message);
-        }
-        // Auth guard in _layout.tsx will handle navigation
-    };
-
-    const navigateToLogin = () => {
-        router.replace('/signin' as any);
+        if (error) setError(error.message);
     };
 
     return (
         <View style={styles.container}>
             <StatusBar style="dark" />
-
-            {/* Light Gradient Background */}
             <LinearGradient
                 colors={['#FFFFFF', '#F0F4FF', '#E8E4F6']}
-                style={styles.background}
+                style={StyleSheet.absoluteFill}
             />
 
             <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={styles.content}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                style={styles.keyboardView}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
             >
                 <ScrollView
-                    contentContainerStyle={styles.scrollInner}
+                    contentContainerStyle={[
+                        styles.scrollInner,
+                        { paddingBottom: keyboardHeight > 0 ? keyboardHeight + 32 : 40 },
+                    ]}
                     showsVerticalScrollIndicator={false}
                     keyboardShouldPersistTaps="handled"
                     bounces={false}
                 >
-                {/* Header Section */}
-                <Animated.View entering={FadeInUp.duration(800)} style={{ width: '100%', alignItems: 'center' }}>
-                    <View style={styles.header}>
+                    {/* Header */}
+                    <Animated.View entering={FadeInUp.duration(700)} style={styles.header}>
                         <View style={styles.logoCircle}>
-                            <Ionicons name="person-add" size={28} color={theme.colors.primary} />
+                            <Ionicons name="person-add" size={26} color={theme.colors.primary} />
                         </View>
                         <Text style={styles.welcomeText}>Create Account</Text>
                         <Text style={styles.taglineText}>Join Orbit for premium tracking</Text>
-                    </View>
-                </Animated.View>
+                    </Animated.View>
 
-                {/* Main White Card */}
-                <Animated.View 
-                    entering={FadeInUp.delay(200).duration(800).springify()}
-                    style={{ width: '100%', alignItems: 'center' }}
-                >
-                    <View style={styles.card}>
-                        {/* Inputs */}
+                    {/* Card */}
+                    <Animated.View
+                        entering={FadeInUp.delay(180).duration(700).springify()}
+                        style={styles.card}
+                    >
+                        {/* ── "User already exists" banner ── */}
+                        {userExists && (
+                            <Animated.View entering={FadeIn.duration(250)} style={styles.existsBanner}>
+                                <Ionicons name="person-circle-outline" size={20} color="#7B1FA2" />
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.existsTitle}>Account already exists</Text>
+                                    <Text style={styles.existsSubtitle}>
+                                        <Text style={styles.existsEmail}>{email}</Text> is already registered.
+                                    </Text>
+                                </View>
+                                <TouchableOpacity
+                                    style={styles.existsSignInBtn}
+                                    onPress={() => router.replace('/signin')}
+                                >
+                                    <Text style={styles.existsSignInText}>Sign In →</Text>
+                                </TouchableOpacity>
+                            </Animated.View>
+                        )}
+
+                        {/* Form */}
                         <View style={styles.form}>
+                            {/* Username */}
                             <View style={styles.inputWrapper}>
-                                <Ionicons name="person-outline" size={20} color="#999" style={styles.inputIcon} />
+                                <Ionicons name="person-outline" size={18} color="#AAA" style={styles.inputIcon} />
                                 <TextInput
-                                    style={styles.inputWithIcon}
+                                    style={styles.inputField}
                                     placeholder="Username"
-                                    placeholderTextColor="#999"
+                                    placeholderTextColor="#C0C0C0"
                                     value={username}
                                     onChangeText={setUsername}
-                                    autoCapitalize="none"
+                                    autoCapitalize="words"
                                     editable={!isSubmitting}
+                                    returnKeyType="next"
                                 />
                             </View>
 
+                            {/* Email */}
                             <View style={styles.inputWrapper}>
-                                <Ionicons name="mail-outline" size={20} color="#999" style={styles.inputIcon} />
+                                <Ionicons name="mail-outline" size={18} color="#AAA" style={styles.inputIcon} />
                                 <TextInput
-                                    style={styles.inputWithIcon}
-                                    placeholder="Email"
-                                    placeholderTextColor="#999"
+                                    style={styles.inputField}
+                                    placeholder="Email address"
+                                    placeholderTextColor="#C0C0C0"
                                     value={email}
-                                    onChangeText={setEmail}
+                                    onChangeText={(t) => {
+                                        setEmail(t);
+                                        setUserExists(false);
+                                    }}
                                     autoCapitalize="none"
                                     keyboardType="email-address"
                                     editable={!isSubmitting}
+                                    returnKeyType="next"
                                 />
                             </View>
 
-                            <View style={styles.inputWrapper}>
-                                <Ionicons name="lock-closed-outline" size={20} color="#999" style={styles.inputIcon} />
+                            {/* Password */}
+                            <View
+                                style={[
+                                    styles.inputWrapper,
+                                    showRules && styles.inputWrapperFocused,
+                                ]}
+                            >
+                                <Ionicons name="lock-closed-outline" size={18} color="#AAA" style={styles.inputIcon} />
                                 <TextInput
-                                    style={styles.inputWithIcon}
+                                    style={styles.inputField}
                                     placeholder="Password"
-                                    placeholderTextColor="#999"
+                                    placeholderTextColor="#C0C0C0"
                                     value={password}
-                                    onChangeText={setPassword}
+                                    onChangeText={(t) => {
+                                        setPassword(t);
+                                        if (!showRules && t.length > 0) setShowRules(true);
+                                    }}
                                     secureTextEntry={!showPassword}
                                     editable={!isSubmitting}
+                                    returnKeyType="done"
+                                    onSubmitEditing={handleSignup}
                                 />
                                 <TouchableOpacity
                                     onPress={() => setShowPassword(!showPassword)}
@@ -150,62 +233,109 @@ export const Signup: React.FC = () => {
                                     disabled={isSubmitting}
                                 >
                                     <Ionicons
-                                        name={showPassword ? "eye-off-outline" : "eye-outline"}
-                                        size={20}
-                                        color="#999"
+                                        name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                                        size={18}
+                                        color="#AAA"
                                     />
                                 </TouchableOpacity>
                             </View>
 
+                            {/* ── Strength bar + rules ── */}
+                            {showRules && password.length > 0 && (
+                                <Animated.View entering={FadeIn.duration(200)} style={styles.strengthBlock}>
+                                    {/* Bar */}
+                                    <View style={styles.strengthBarRow}>
+                                        {[0, 1, 2, 3].map((i) => (
+                                            <View
+                                                key={i}
+                                                style={[
+                                                    styles.strengthSegment,
+                                                    {
+                                                        backgroundColor:
+                                                            i < strength.bars
+                                                                ? strength.barColor
+                                                                : '#EBEBEB',
+                                                    },
+                                                ]}
+                                            />
+                                        ))}
+                                        <Text style={[styles.strengthLabel, { color: strength.color }]}>
+                                            {strength.label}
+                                        </Text>
+                                    </View>
+
+                                    {/* Rule checklist */}
+                                    {ruleResults.map((r) => (
+                                        <View key={r.key} style={styles.ruleRow}>
+                                            <Ionicons
+                                                name={r.passed ? 'checkmark-circle' : 'ellipse-outline'}
+                                                size={13}
+                                                color={r.passed ? '#4CAF50' : '#BBBBCC'}
+                                            />
+                                            <Text
+                                                style={[
+                                                    styles.ruleText,
+                                                    r.passed && styles.ruleTextPassed,
+                                                ]}
+                                            >
+                                                {r.label}
+                                            </Text>
+                                        </View>
+                                    ))}
+                                </Animated.View>
+                            )}
+
+                            {/* Generic error */}
                             {error && (
                                 <View style={styles.errorContainer}>
+                                    <Ionicons name="alert-circle-outline" size={14} color="#D32F2F" />
                                     <Text style={styles.errorText}>{error}</Text>
                                 </View>
                             )}
                         </View>
 
-                        {/* Action Button */}
+                        {/* Create Account button */}
                         <Button
                             title="Create Account"
                             onPress={handleSignup}
                             loading={isSubmitting}
-                            style={{ marginBottom: 16 }}
+                            style={{ marginBottom: 14 }}
                         />
 
-                        {/* Login Link */}
-                        <TouchableOpacity onPress={navigateToLogin} style={styles.loginLinkContainer}>
-                            <Text style={styles.loginLinkText}>
-                                Already have an account? <Text style={styles.loginLinkHighlight}>Sign In</Text>
+                        {/* Sign-in link */}
+                        <TouchableOpacity
+                            onPress={() => router.replace('/signin' as any)}
+                            style={styles.signInLinkRow}
+                        >
+                            <Text style={styles.signInLinkText}>
+                                Already have an account?{' '}
+                                <Text style={styles.signInLinkHighlight}>Sign In</Text>
                             </Text>
                         </TouchableOpacity>
 
                         {/* Divider */}
-                        <View style={styles.dividerContainer}>
+                        <View style={styles.dividerRow}>
                             <View style={styles.dividerLine} />
                             <Text style={styles.dividerText}>Or quick access</Text>
                             <View style={styles.dividerLine} />
                         </View>
 
-                        {/* Google Sign In */}
-                        <TouchableOpacity 
+                        {/* Google */}
+                        <TouchableOpacity
                             style={styles.googleButton}
                             onPress={handleGoogleSignIn}
                             disabled={isSubmitting}
                         >
-                            <GoogleIcon size={20} />
+                            <GoogleIcon size={18} />
                             <Text style={styles.googleButtonText}>Continue with Google</Text>
                         </TouchableOpacity>
-                    </View>
-                </Animated.View>
+                    </Animated.View>
 
-                {/* Secure Footer */}
-                <Animated.View entering={FadeIn.delay(600)} style={{ width: '100%', alignItems: 'center' }}>
-                    <View style={styles.secureFooter}>
-                        <Ionicons name="shield-checkmark" size={12} color="#999" />
-                        <Text style={styles.secureText}>Your data is secure and encrypted.</Text>
-                    </View>
-                </Animated.View>
-
+                    {/* Footer */}
+                    <Animated.View entering={FadeIn.delay(500)} style={styles.footer}>
+                        <Ionicons name="shield-checkmark" size={12} color="#BBB" />
+                        <Text style={styles.footerText}>Your data is secure and encrypted.</Text>
+                    </Animated.View>
                 </ScrollView>
             </KeyboardAvoidingView>
         </View>
@@ -217,123 +347,211 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#F5F7FA',
     },
-    background: {
-        ...StyleSheet.absoluteFillObject,
-    },
-    content: {
+    keyboardView: {
         flex: 1,
     },
     scrollInner: {
         flexGrow: 1,
-        justifyContent: 'center',
+        justifyContent: 'flex-start',
         alignItems: 'center',
-        padding: theme.spacing.m,
+        paddingHorizontal: 20,
+        paddingTop: Platform.OS === 'ios' ? 70 : 50,
     },
+
+    // Header
     header: {
         alignItems: 'center',
         marginBottom: 24,
+        width: '100%',
     },
     logoCircle: {
-        width: 56,
-        height: 56,
+        width: 58,
+        height: 58,
         borderRadius: 20,
         backgroundColor: 'white',
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: 16,
         shadowColor: theme.colors.primary,
-        shadowOpacity: 0.2,
-        shadowRadius: 20,
-        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.18,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 8 },
+        elevation: 6,
     },
     welcomeText: {
-        fontSize: 28,
+        fontSize: 26,
         fontWeight: '800',
         color: '#1A1A1A',
-        marginBottom: 8,
+        marginBottom: 6,
+        letterSpacing: -0.5,
     },
     taglineText: {
         fontSize: 14,
-        color: '#666',
-        fontWeight: '500',
+        color: '#888',
+        fontWeight: '400',
     },
+
+    // Card
     card: {
         width: '100%',
-        maxWidth: 360,
+        maxWidth: 380,
         backgroundColor: 'white',
         borderRadius: 24,
-        padding: 24,
-        paddingVertical: 28,
+        paddingHorizontal: 24,
+        paddingTop: 26,
+        paddingBottom: 22,
         shadowColor: '#000',
-        shadowOpacity: 0.08,
-        shadowRadius: 30,
-        shadowOffset: { width: 0, height: 15 },
+        shadowOpacity: 0.07,
+        shadowRadius: 28,
+        shadowOffset: { width: 0, height: 12 },
         elevation: 8,
     },
+
+    // User-exists banner
+    existsBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        backgroundColor: '#F3E5F5',
+        borderRadius: 14,
+        padding: 14,
+        marginBottom: 16,
+        borderWidth: 1,
+        borderColor: '#CE93D8',
+    },
+    existsTitle: {
+        fontSize: 13,
+        fontWeight: '700',
+        color: '#6A1B9A',
+    },
+    existsSubtitle: {
+        fontSize: 12,
+        color: '#7B1FA2',
+        marginTop: 1,
+    },
+    existsEmail: {
+        fontWeight: '700',
+    },
+    existsSignInBtn: {
+        backgroundColor: '#7B1FA2',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 10,
+    },
+    existsSignInText: {
+        color: '#FFF',
+        fontSize: 12,
+        fontWeight: '700',
+    },
+
+    // Form
     form: {
         gap: 12,
-        marginBottom: 24,
+        marginBottom: 22,
     },
     inputWrapper: {
         backgroundColor: '#FAFAFA',
-        borderRadius: 12,
-        borderWidth: 1,
+        borderRadius: 13,
+        borderWidth: 1.5,
         borderColor: '#EFEFEF',
-        paddingHorizontal: 16,
-        height: 48,
+        paddingHorizontal: 14,
+        height: 50,
         flexDirection: 'row',
         alignItems: 'center',
+    },
+    inputWrapperFocused: {
+        borderColor: `${theme.colors.primary}50`,
     },
     inputIcon: {
         marginRight: 10,
     },
-    inputWithIcon: {
+    inputField: {
         flex: 1,
         fontSize: 14,
-        color: '#333',
+        color: '#222',
         height: '100%',
     },
     eyeIcon: {
         padding: 4,
     },
-    actionButton: {
-        backgroundColor: theme.colors.primary,
-        height: 48,
-        borderRadius: 12,
+
+    // Strength block
+    strengthBlock: {
+        gap: 7,
+        paddingHorizontal: 2,
+        marginTop: -4,
+    },
+    strengthBarRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
-        gap: 8,
-        marginBottom: 16,
-        shadowColor: theme.colors.primary,
-        shadowOpacity: 0.5,
-        shadowRadius: 15,
-        shadowOffset: { width: 0, height: 8 },
+        gap: 5,
     },
-    actionButtonText: {
-        color: 'white',
-        fontSize: 16,
+    strengthSegment: {
+        flex: 1,
+        height: 4,
+        borderRadius: 2,
+    },
+    strengthLabel: {
+        fontSize: 11,
         fontWeight: '700',
+        width: 60,
+        textAlign: 'right',
     },
-    loginLinkContainer: {
+    ruleRow: {
+        flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: 20,
+        gap: 6,
     },
-    loginLinkText: {
-        color: '#666',
-        fontSize: 14,
+    ruleText: {
+        fontSize: 12,
+        color: '#BBBBCC',
         fontWeight: '500',
     },
-    loginLinkHighlight: {
+    ruleTextPassed: {
+        color: '#4CAF50',
+    },
+
+    // Error
+    errorContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 7,
+        backgroundColor: '#FFF0F0',
+        borderRadius: 10,
+        padding: 11,
+        borderWidth: 1,
+        borderColor: '#FFCDD2',
+        marginTop: -4,
+    },
+    errorText: {
+        color: '#D32F2F',
+        fontSize: 12,
+        fontWeight: '500',
+        flex: 1,
+    },
+
+    // Sign-in link
+    signInLinkRow: {
+        alignItems: 'center',
+        marginBottom: 18,
+    },
+    signInLinkText: {
+        color: '#888',
+        fontSize: 13,
+        fontWeight: '400',
+    },
+    signInLinkHighlight: {
         color: theme.colors.primary,
         fontWeight: '700',
         textDecorationLine: 'underline',
     },
-    dividerContainer: {
+
+    // Divider
+    dividerRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
-        marginBottom: 16,
+        gap: 10,
+        marginBottom: 14,
     },
     dividerLine: {
         flex: 1,
@@ -347,43 +565,8 @@ const styles = StyleSheet.create({
         textTransform: 'uppercase',
         letterSpacing: 0.5,
     },
-    socialRow: {
-        flexDirection: 'row',
-        gap: 12,
-    },
-    socialButton: {
-        flex: 1,
-        height: 48,
-        backgroundColor: '#FFF',
-        borderWidth: 1,
-        borderColor: '#EEE',
-        borderRadius: 12,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    secureFooter: {
-        marginTop: 24,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-    },
-    secureText: {
-        color: 'rgba(102, 102, 102, 0.5)',
-        fontSize: 12,
-        fontWeight: '500',
-    },
-    errorContainer: {
-        backgroundColor: '#FFE8E8',
-        borderRadius: 8,
-        padding: 12,
-        marginTop: 8,
-    },
-    errorText: {
-        color: '#D32F2F',
-        fontSize: 13,
-        fontWeight: '500',
-        textAlign: 'center',
-    },
+
+    // Google
     googleButton: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -391,13 +574,26 @@ const styles = StyleSheet.create({
         gap: 10,
         height: 48,
         backgroundColor: '#FFF',
-        borderWidth: 1,
-        borderColor: '#EEE',
-        borderRadius: 12,
+        borderWidth: 1.5,
+        borderColor: '#E8E8E8',
+        borderRadius: 13,
     },
     googleButtonText: {
         color: '#333',
         fontSize: 14,
         fontWeight: '600',
+    },
+
+    // Footer
+    footer: {
+        marginTop: 24,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+    },
+    footerText: {
+        color: 'rgba(102, 102, 102, 0.5)',
+        fontSize: 12,
+        fontWeight: '500',
     },
 });

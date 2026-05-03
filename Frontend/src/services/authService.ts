@@ -34,6 +34,14 @@ export const signUpWithEmail = async (email: string, password: string, username:
             },
         });
         if (error) throw error;
+
+        // ── Supabase v2 email-enumeration protection ──────────────────────────
+        // When email confirmations are ON, signing up with an already-registered
+        // address does NOT return an error. Instead it returns a fake user object
+        // whose `identities` array is empty. Detect this and surface it.
+        if (data?.user && (!data.user.identities || data.user.identities.length === 0)) {
+            throw new Error('user already registered');
+        }
         
         return { 
             error: null, 
@@ -42,7 +50,7 @@ export const signUpWithEmail = async (email: string, password: string, username:
         };
     } catch (error: any) {
         return { 
-            error: new Error(friendlyErrorMessage(error.message || 'Sign up failed')), 
+            error: new Error(error.message || 'Sign up failed'), 
             data: null, 
             needsEmailConfirmation: false 
         };

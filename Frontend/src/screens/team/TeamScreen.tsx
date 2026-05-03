@@ -166,9 +166,27 @@ export const TeamPage: React.FC = () => {
 
   const handleCopyCode = async () => {
     if (!teamState.team?.code) return;
-    await Share.share({
-      message: `Join my OfficeOrbit team with code: ${teamState.team.code}`,
-    });
+    // Use Share so the user can tap "Copy" in the native sheet—no native module needed.
+    await Share.share({ message: teamState.team.code });
+  };
+
+  const handleShareCode = async () => {
+    if (!teamState.team?.code) return;
+    const teamName = teamState.team.name;
+    const code = teamState.team.code;
+
+    // WhatsApp markdown: *text* = bold, `text` = monospace/code block.
+    // Putting the code in backticks makes it visually distinct so the recipient
+    // can long-press → Copy on just that word — no manual typing needed.
+    const message =
+      `🚀 You're invited to join *${teamName}* on OfficeOrbit!\n\n` +
+      `Team code: \`${code}\`\n\n` +
+      `📲 *How to join:*\n` +
+      `1. Download OfficeOrbit\n` +
+      `2. Tap *Team → Join a Team*\n` +
+      `3. Paste the code above\n\n` +
+      `OfficeOrbit tracks office attendance automatically — zero manual check-ins. See who's in today and hit your WFO targets effortlessly.`;
+    await Share.share({ message, title: `Join ${teamName} on OfficeOrbit` });
   };
 
   const confirmLeaveTeam = () => {
@@ -330,16 +348,24 @@ export const TeamPage: React.FC = () => {
               onPress={handleCopyCode}
               activeOpacity={0.85}
             >
+              <Ionicons name='copy-outline' size={14} color='white' />
               <Text style={styles.codeText}>{teamState.team?.code}</Text>
-              <Ionicons name='copy-outline' size={16} color='white' />
             </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={styles.refreshButton}
-            onPress={() => void loadTeam()}
-          >
-            <Ionicons name='refresh' size={18} color='#FFF' />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.shareButton}
+              onPress={handleShareCode}
+            >
+              <Ionicons name='share-social-outline' size={18} color='#FFF' />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.refreshButton}
+              onPress={() => void loadTeam()}
+            >
+              <Ionicons name='refresh' size={18} color='#FFF' />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.statsRow}>
@@ -548,6 +574,19 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  shareButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
   },
   statsRow: {
     flexDirection: 'row',

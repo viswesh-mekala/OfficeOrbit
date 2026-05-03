@@ -822,36 +822,65 @@ export const Dashboard: React.FC = () => {
           entering={FadeInDown.delay(300).duration(600).springify()}
         >
           <View style={styles.metricsRow}>
-            {dashboardMetrics.metrics.map((metric, index) => (
-              <View key={index} style={styles.metricWrapper}>
-                {metric.icon === 'flame' ? (
-                  <View style={styles.metricCardWrap}>
-                    <MetricCard
-                      {...metric}
-                      icon={metric.icon as any}
-                      value={
-                        index === 0 ? String(streakDisplayedTotal) : metric.value
-                      }
-                    />
-                    <TouchableOpacity
-                      accessibilityRole="button"
-                      accessibilityLabel="Streak details"
-                      style={styles.metricMenuBtn}
-                      onPress={() => setStreakModalVisible(true)}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Ionicons
-                        name="ellipsis-vertical"
-                        size={18}
-                        color={theme.colors.text.secondary}
+            {/* ── Streak Card (bespoke) ── */}
+            <View style={styles.metricWrapper}>
+              <TouchableOpacity
+                style={styles.streakCard}
+                onPress={() => setStreakModalVisible(true)}
+                activeOpacity={0.85}
+              >
+                {/* top row */}
+                <View style={styles.streakTopRow}>
+                  <View style={styles.streakIconWrap}>
+                    <Text style={styles.streakEmoji}>🔥</Text>
+                  </View>
+                  <View style={styles.streakTextGroup}>
+                    <Text style={styles.streakCount}>{streakDisplayedTotal}</Text>
+                    <Text style={styles.streakLabel}>Streak</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={14} color="#FF9800" />
+                </View>
+
+                {/* Progress bar for current period */}
+                {streakEvalSnapshot && streakRequiredNowLive != null ? (
+                  <View style={styles.streakProgressArea}>
+                    <View style={styles.streakProgressTrack}>
+                      <View
+                        style={[
+                          styles.streakProgressFill,
+                          {
+                            width: `${Math.min(
+                              100,
+                              Math.round(
+                                (streakEvalSnapshot.currentPeriodOfficeDays /
+                                  streakRequiredNowLive) *
+                                  100,
+                              ),
+                            )}%` as any,
+                          },
+                        ]}
                       />
-                    </TouchableOpacity>
+                    </View>
+                    <Text style={styles.streakProgressLabel}>
+                      {streakEvalSnapshot.currentPeriodOfficeDays}/{streakRequiredNowLive} office days this{' '}
+                      {streakEvalSnapshot.periodType}
+                    </Text>
                   </View>
                 ) : (
-                  <MetricCard {...metric} icon={metric.icon as any} />
+                  <Text style={styles.streakNoTarget}>Tap to set up your streak</Text>
                 )}
-              </View>
-            ))}
+              </TouchableOpacity>
+            </View>
+
+            {/* ── This Month Card ── */}
+            <View style={styles.metricWrapper}>
+              <MetricCard
+                title={dashboardMetrics.metrics[1].title}
+                value={dashboardMetrics.metrics[1].value}
+                subtext={dashboardMetrics.metrics[1].subtext}
+                icon={dashboardMetrics.metrics[1].icon as any}
+              />
+            </View>
           </View>
         </Animated.View>
 
@@ -874,66 +903,114 @@ export const Dashboard: React.FC = () => {
         </Animated.View>
       </ScrollView>
 
+      {/* ── Streak Modal (redesigned) ── */}
       <Modal
         visible={streakModalVisible}
         transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setStreakModalVisible(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setStreakModalVisible(false)}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
-            <Text style={styles.modalTitle}>Office streak</Text>
-            <ScrollView
-              style={styles.modalScroll}
-              showsVerticalScrollIndicator={false}
-            >
-              {streakEvalSnapshot ? (
-                <>
-                  <Text style={styles.modalLead}>
-                    Flame total = periods in a row that hit your office weekday goal,
-                    plus office weekdays logged so far this period (Mon–Fri).
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderLeft}>
+                <Text style={styles.modalEmoji}>🔥</Text>
+                <View>
+                  <Text style={styles.modalTitle}>Office Streak</Text>
+                  <Text style={styles.modalSubheader}>
+                    {(profile?.office_target_period || 'week') === 'month' ? 'Monthly tracking mode' : 'Weekly tracking mode'}
                   </Text>
-                  <Text style={styles.modalBullet}>
-                    • Counts Mon–Fri office (present) only — not weekends, leave, or
-                    holiday.
-                  </Text>
-                  <Text style={styles.modalBullet}>
-                    • Bucket: weekly Mon–Sun or calendar month (Profile). Goal never
-                    exceeds weekdays in that bucket. Checked when the period ends.
-                  </Text>
-                  <Text style={styles.modalBullet}>
-                    • Reset: finish a period below goal → streak drops to 0 (only
-                    this score; calendar history stays).
-                  </Text>
-                  <Text style={styles.modalBullet}>
-                    •{' '}
-                    {streakEvalSnapshot.periodType === 'month' ? 'Month' : 'Week'} mode
-                    · Goal {streakEvalSnapshot.requiredOfficeDays ?? '—'} office
-                    weekdays · Now {streakEvalSnapshot.currentPeriodOfficeDays}/
-                    {streakRequiredNowLive ?? '—'} · Periods streak{' '}
-                    {streakClosedPeriodsLive} · Card {String(streakDisplayedTotal)}
-                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity onPress={() => setStreakModalVisible(false)} style={styles.modalCloseIcon}>
+                <Ionicons name="close" size={20} color={theme.colors.text.secondary} />
+              </TouchableOpacity>
+            </View>
+
+            {streakEvalSnapshot ? (
+              <>
+                {/* Big number */}
+                <View style={styles.modalBigStat}>
+                  <Text style={styles.modalBigNumber}>{streakDisplayedTotal}</Text>
+                  <Text style={styles.modalBigLabel}>Total streak score</Text>
+                </View>
+
+                {/* Stat rows */}
+                <View style={styles.modalStatGrid}>
+                  <View style={styles.modalStatRow}>
+                    <View style={styles.modalStatIcon}>
+                      <Ionicons name="checkmark-circle" size={18} color="#4CAF50" />
+                    </View>
+                    <View style={styles.modalStatText}>
+                      <Text style={styles.modalStatLabel}>Completed periods</Text>
+                      <Text style={styles.modalStatValue}>{streakClosedPeriodsLive} in a row</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalStatRow}>
+                    <View style={styles.modalStatIcon}>
+                      <Ionicons name="today" size={18} color={theme.colors.primary} />
+                    </View>
+                    <View style={styles.modalStatText}>
+                      <Text style={styles.modalStatLabel}>This {streakEvalSnapshot.periodType}</Text>
+                      <Text style={styles.modalStatValue}>
+                        {streakEvalSnapshot.currentPeriodOfficeDays} of{' '}
+                        {streakRequiredNowLive ?? '—'} office days logged
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalStatRow}>
+                    <View style={styles.modalStatIcon}>
+                      <Ionicons name="trophy" size={18} color="#FF9800" />
+                    </View>
+                    <View style={styles.modalStatText}>
+                      <Text style={styles.modalStatLabel}>Target</Text>
+                      <Text style={styles.modalStatValue}>
+                        {streakEvalSnapshot.requiredOfficeDays ?? '—'} office days per{' '}
+                        {streakEvalSnapshot.periodType}
+                      </Text>
+                    </View>
+                  </View>
+
                   {streakEvalSnapshot.lastClosedPeriodKey ? (
-                    <Text style={styles.modalBulletMuted}>
-                      Last closed {streakEvalSnapshot.periodType}:{' '}
-                      {streakEvalSnapshot.lastClosedPeriodKey},{' '}
-                      {streakEvalSnapshot.lastClosedOfficeDays ?? '—'} office days —{' '}
-                      {streakEvalSnapshot.lastClosedOk ? 'met goal' : 'under goal'}.
-                    </Text>
+                    <View style={styles.modalStatRow}>
+                      <View style={styles.modalStatIcon}>
+                        <Ionicons
+                          name={streakEvalSnapshot.lastClosedOk ? 'star' : 'close-circle'}
+                          size={18}
+                          color={streakEvalSnapshot.lastClosedOk ? '#FF9800' : '#D32F2F'}
+                        />
+                      </View>
+                      <View style={styles.modalStatText}>
+                        <Text style={styles.modalStatLabel}>Last completed {streakEvalSnapshot.periodType}</Text>
+                        <Text style={styles.modalStatValue}>
+                          {streakEvalSnapshot.lastClosedOfficeDays ?? '—'} office days —{' '}
+                          {streakEvalSnapshot.lastClosedOk ? '✅ Goal met!' : '❌ Below goal'}
+                        </Text>
+                      </View>
+                    </View>
                   ) : null}
-                </>
-              ) : (
-                <Text style={styles.modalLead}>
-                  Set office weekdays + week/month mode in Profile to enable this.
+                </View>
+
+                {/* How it works note */}
+                <View style={styles.modalNote}>
+                  <Ionicons name="information-circle-outline" size={14} color="#888" />
+                  <Text style={styles.modalNoteText}>
+                    Score = closed periods that hit your goal + office days logged so far this {streakEvalSnapshot.periodType}. Missing your goal in any period resets the streak to 0.
+                  </Text>
+                </View>
+              </>
+            ) : (
+              <View style={styles.modalEmptyState}>
+                <Text style={styles.modalEmptyIcon}>🎯</Text>
+                <Text style={styles.modalEmptyTitle}>No target set yet</Text>
+                <Text style={styles.modalEmptyDesc}>
+                  Go to Profile → Schedule and set your office-day target to activate the streak tracker.
                 </Text>
-              )}
-            </ScrollView>
-            <TouchableOpacity
-              style={styles.modalClose}
-              onPress={() => setStreakModalVisible(false)}
-            >
-              <Text style={styles.modalCloseText}>Close</Text>
-            </TouchableOpacity>
+              </View>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -1034,58 +1111,214 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: 8,
   },
+  // ── Streak Card ──
+  streakCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 14,
+    flex: 1,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#E7EAF2',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  streakTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  streakIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#FFF3E0',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  streakEmoji: {
+    fontSize: 18,
+  },
+  streakTextGroup: {
+    flex: 1,
+  },
+  streakCount: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#FF9800',
+    letterSpacing: -0.5,
+  },
+  streakLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FF9800',
+    letterSpacing: 0.3,
+    marginTop: 1,
+  },
+  streakProgressArea: {
+    gap: 5,
+  },
+  streakProgressTrack: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#F0F0F0',
+    overflow: 'hidden',
+  },
+  streakProgressFill: {
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#FF9800',
+  },
+  streakProgressLabel: {
+    fontSize: 10,
+    color: '#FF9800',
+    fontWeight: '600',
+  },
+  streakNoTarget: {
+    fontSize: 10,
+    color: '#BBBBCC',
+    fontWeight: '500',
+  },
+  // ── Modal (redesigned) ──
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    justifyContent: 'center',
-    padding: 18,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+    padding: 0,
   },
   modalCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 24,
+    paddingBottom: 36,
     borderWidth: 1,
     borderColor: '#E7EAF2',
+    gap: 16,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  modalEmoji: {
+    fontSize: 28,
   },
   modalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: theme.colors.text.primary,
+  },
+  modalSubheader: {
+    fontSize: 11,
+    color: theme.colors.text.secondary,
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  modalCloseIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#F5F5F5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBigStat: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  modalBigNumber: {
+    fontSize: 54,
+    fontWeight: '900',
+    color: '#FF9800',
+    letterSpacing: -2,
+  },
+  modalBigLabel: {
+    fontSize: 13,
+    color: theme.colors.text.secondary,
+    fontWeight: '500',
+    marginTop: -4,
+  },
+  modalStatGrid: {
+    gap: 12,
+  },
+  modalStatRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    backgroundColor: '#FAFAFA',
+    borderRadius: 12,
+    padding: 12,
+  },
+  modalStatIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#FFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 1,
+  },
+  modalStatText: {
+    flex: 1,
+    gap: 2,
+  },
+  modalStatLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: theme.colors.text.secondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  modalStatValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.colors.text.primary,
+  },
+  modalNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#F8F8FF',
+    borderRadius: 10,
+    padding: 12,
+  },
+  modalNoteText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#888',
+    lineHeight: 18,
+  },
+  modalEmptyState: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    gap: 8,
+  },
+  modalEmptyIcon: {
+    fontSize: 40,
+  },
+  modalEmptyTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: theme.colors.text.primary,
-    marginBottom: 10,
   },
-  modalScroll: {
-    maxHeight: 280,
-  },
-  modalLead: {
-    fontSize: 13,
-    color: theme.colors.text.primary,
-    lineHeight: 19,
-    marginBottom: 10,
-    fontWeight: '600',
-  },
-  modalBullet: {
+  modalEmptyDesc: {
     fontSize: 13,
     color: theme.colors.text.secondary,
-    lineHeight: 19,
-    marginBottom: 8,
-    paddingLeft: 2,
-  },
-  modalBulletMuted: {
-    fontSize: 12,
-    color: theme.colors.text.secondary,
-    lineHeight: 17,
-    marginTop: 4,
-    opacity: 0.85,
-  },
-  modalClose: {
-    alignSelf: 'flex-end',
-    marginTop: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  modalCloseText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.colors.primary,
+    textAlign: 'center',
+    lineHeight: 20,
+    paddingHorizontal: 16,
   },
 });
