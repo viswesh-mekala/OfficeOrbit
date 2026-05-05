@@ -26,15 +26,9 @@ Deno.serve(async (req: Request) => {
         .select('*')
         .eq('user_id', user.id)
         .eq('date', today)
-        .single();
+        .maybeSingle();  // returns null (not an error) when no record exists yet
 
-    if (error) {
-      // Not found is a valid state (no check-in yet)
-      if (error.code === 'PGRST116') {
-        return successResponse(null);
-      }
-      throw error;
-    }
+    if (error) throw error;
 
     const serialized = data
       ? {

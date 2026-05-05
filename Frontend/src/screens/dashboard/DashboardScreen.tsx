@@ -24,11 +24,13 @@ import { useToast } from '../../components/common/Toast';
 import { useAuth } from '../../store/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
+import * as SecureStore from 'expo-secure-store';
 import { useAttendance } from '../../hooks/useAttendance';
+import { AppDialog } from '../../components/common/AppDialog';
 import { SlideAction } from '../../components/common/SlideAction';
 import { clockIn, clockOut } from '../../services/AttendanceService';
 import { getDistanceFromLatLonInMeters } from '../../utils/locationUtils';
-import { addNotification } from '../../services/NotificationService';
+import { addNotification, sendDeviceNotification } from '../../services/NotificationService';
 import {
   isCalendarManagedDay,
   liveDurationMinutes,
@@ -49,10 +51,13 @@ export const Dashboard: React.FC = () => {
     loading: attendanceLoading,
     refresh,
     refreshing,
+    optimisticUpdate,
   } = useAttendance();
+
   const [isSubmittingAttendance, setIsSubmittingAttendance] = useState(false);
   const [streakModalVisible, setStreakModalVisible] = useState(false);
   const [persistedStreakCount, setPersistedStreakCount] = useState(0);
+  const [showFirstDayHint, setShowFirstDayHint] = useState(false);
 
   // Fallback data
   const userName = profile?.username || authUser?.user_metadata?.name || 'User';
@@ -80,6 +85,42 @@ export const Dashboard: React.FC = () => {
       cancelled = true;
     };
   }, [authUser?.id]);
+
+  // ── First Day "Teachable Moment" Check ──
+  useEffect(() => {
+    const checkFirstDayLocation = async () => {
+      // Only run this check if they have NO attendance history yet
+      if (weeklyLogs.length > 0 || todayLog || !profile?.company_location) return;
+
+      try {
+        const hasSeen = await SecureStore.getItemAsync('has_seen_first_day_hint');
+        if (hasSeen) return;
+
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status !== 'granted') return;
+
+        // Use a quick cached location so we don't keep the GPS radio on
+        const pos = await Location.getLastKnownPositionAsync({ maxAge: 120000 });
+        if (!pos) return;
+
+        const dist = getDistanceFromLatLonInMeters(
+          pos.coords.latitude, pos.coords.longitude,
+          profile.company_location.latitude, profile.company_location.longitude
+        );
+
+        if (dist <= 500) {
+          setShowFirstDayHint(true);
+          await SecureStore.setItemAsync('has_seen_first_day_hint', 'true');
+        }
+      } catch (err) {
+        // Silent fail — it's just a hint
+      }
+    };
+
+    if (!attendanceLoading) {
+      checkFirstDayLocation();
+    }
+  }, [attendanceLoading, weeklyLogs.length, todayLog, profile?.company_location]);
 
   // Time-aware greeting
   const getGreeting = () => {
@@ -165,29 +206,38 @@ export const Dashboard: React.FC = () => {
       return;
     }
 
-    // CASE 1: Check Out (if already checked in and not checked out)
     try {
+      // CASE 1: Manual Check Out — optimistic update fires immediately
       if (todayLog && !todayLog.check_out) {
-        const { error } = await clockOut();
+        // Update UI right now — user sees 'Checked Out' before API responds
+        const rollback = optimisticUpdate({ check_out: new Date().toISOString() });
+        const { data: checkoutResult, error } = await clockOut('manual');
         if (error) {
+          rollback(); // revert the optimistic change
           await addNotification({
             title: 'Check-out failed',
-            body:
-              error.message || 'We could not check you out. Please try again.',
+            body: error.message || 'We could not check you out. Please try again.',
             type: 'attendance',
           });
           showToast({ title: 'Check-out failed', message: error.message || 'Please try again.', variant: 'error' });
         } else {
           refresh();
+          const totalMin: number = (checkoutResult as any)?.total_minutes ?? (checkoutResult as any)?.duration_minutes ?? 0;
+          const hrs = Math.floor(totalMin / 60);
+          const mins = totalMin % 60;
+          const durationStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+          const msg = `${durationStr} logged today. Have a great evening!`;
+          await sendDeviceNotification('👋 Checked Out', msg);
           await addNotification({
             title: 'Checked out successfully',
-            body: 'Your attendance has been marked for today.',
+            body: msg,
             type: 'attendance',
           });
           showToast({ title: 'Checked out successfully 👋', message: 'Your attendance has been marked.', variant: 'success' });
         }
         return;
       }
+
 
       // CASE 2: Check In
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -220,15 +270,21 @@ export const Dashboard: React.FC = () => {
           profile.company_location.longitude,
         );
 
+
         if (dist <= 500) {
-          // At Office
+          // Optimistic: mark present instantly before API confirms
+          const rollback = optimisticUpdate({
+            check_in: new Date().toISOString(),
+            status  : 'present',
+          });
           const { error } = await clockIn('present', {
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
             address: 'Office (Manual Swipe)',
-          });
+          }, 'manual');
 
           if (error) {
+            rollback(); // revert optimistic update
             await addNotification({
               title: 'Check-in failed',
               body: error.message || 'We could not check you in at office.',
@@ -237,6 +293,7 @@ export const Dashboard: React.FC = () => {
             showToast({ title: 'Check-in failed', message: error.message, variant: 'error' });
           } else {
             refresh();
+            await sendDeviceNotification('🏢 Checked In at Office', 'Attendance marked. Have a productive day!');
             await addNotification({
               title: 'Checked in at office',
               body: 'Attendance marked successfully. Have a productive day!',
@@ -244,8 +301,9 @@ export const Dashboard: React.FC = () => {
             });
             showToast({ title: 'Welcome! 🏢', message: 'Checked in at office', variant: 'success' });
           }
+
         } else {
-          // Far from office
+          // Far from office — offer WFH
           Alert.alert(
             'Away From Office Location',
             'You are outside the office boundary. Do you want to continue and mark attendance as Work From Home?',
@@ -258,7 +316,7 @@ export const Dashboard: React.FC = () => {
                     latitude: location.coords.latitude,
                     longitude: location.coords.longitude,
                     address: 'Remote',
-                  });
+                  }, 'manual');
                   if (error) {
                     await addNotification({
                       title: 'WFH check-in failed',
@@ -268,6 +326,7 @@ export const Dashboard: React.FC = () => {
                     showToast({ title: 'WFH check-in failed', message: error.message, variant: 'error' });
                   } else {
                     refresh();
+                    await sendDeviceNotification('🏠 Marked as WFH', 'You were away from the office. Attendance marked as Work From Home.');
                     await addNotification({
                       title: 'Marked as Work From Home',
                       body: 'You were away from office location during check-in.',
@@ -280,6 +339,7 @@ export const Dashboard: React.FC = () => {
             ],
           );
         }
+
       } else {
         // No company location set — allow checkin with warning
         Alert.alert(
@@ -724,6 +784,17 @@ export const Dashboard: React.FC = () => {
       <Animated.View entering={FadeInDown.duration(600).springify()}>
         <Header />
       </Animated.View>
+
+      {/* First Day Hint Dialog */}
+      <AppDialog
+        visible={showFirstDayHint}
+        icon="location"
+        title="Looks like you're at the office! 🏢"
+        message={"Slide the button below to log your very first check-in.\n\nFrom tomorrow, this will happen automatically while your phone is in your pocket!"}
+        confirmLabel="Got it!"
+        onConfirm={() => setShowFirstDayHint(false)}
+        onCancel={() => setShowFirstDayHint(false)}
+      />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}

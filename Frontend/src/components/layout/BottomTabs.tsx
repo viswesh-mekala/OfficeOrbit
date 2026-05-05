@@ -29,7 +29,13 @@ export const BottomTabs: React.FC = () => {
                     <TouchableOpacity
                         key={tab.name}
                         style={styles.tab}
-                        onPress={() => router.push(tab.route as any)}
+                    onPress={() => {
+                        // MNC pattern: tab switches REPLACE the current screen (never push).
+                        // This means the back button on any tab goes straight to "exit app"
+                        // rather than cycling through previously visited tabs (Instagram/Slack).
+                        if (!isActive) router.replace(tab.route as any);
+                        // If already on this tab — do nothing (tapping current tab is a no-op)
+                    }}
                         activeOpacity={0.7}
                     >
                         <Ionicons

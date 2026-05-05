@@ -1,247 +1,362 @@
+/**
+ * AttendanceAutomation.ts (v2 — event-driven multi-session model)
+ *
+ * Replaces the old batch-polling approach with three focused handlers:
+ *
+ *   handleGeofenceEnter()      → Called on OS GEOFENCE_ENTER event.
+ *                                 Does NOT immediately check in — instead starts a
+ *                                 5-minute dwell confirmation to filter bike/car pass-bys.
+ *
+ *   handleGeofenceExit()       → Called on OS GEOFENCE_EXIT event.
+ *                                 Starts exit confirmation polling. The poller calls
+ *                                 handleExitConfirmSample() every 3 min.
+ *
+ *   handleExitConfirmSample()  → Called by EXIT_CONFIRM_TASK every ~3 min.
+ *                                 Returns true when exit is confirmed (triggers checkout API).
+ *
+ * State stored in SecureStore so it survives app kills.
+ */
+
 import * as SecureStore from 'expo-secure-store';
-import type { LocationObject } from 'expo-location';
+import * as Location from 'expo-location';
 import { callApi } from './api/apiClient';
-import { clockIn, clockOut } from './AttendanceService';
 import { getDistanceFromLatLonInMeters } from '../utils/locationUtils';
-import { addNotification } from './NotificationService';
-import type { UserProfile } from '../types/auth.types';
-import { isCalendarManagedDay } from '../utils/attendancePolicy';
+import { sendDeviceNotification, addNotification } from './NotificationService';
+import { startActivePolling } from './LocationService';
 
-type CompanyLocation = { latitude: number; longitude: number };
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-type Profile = Pick<UserProfile, 'company_location' | 'minimum_login_time_minutes'>;
+const GEOFENCE_RADIUS_M          = 500;   // Must match LocationService registration
+const DWELL_CONFIRM_DELAY_MS     = 5 * 60 * 1000;   // 5 min dwell before check-in
+const EXIT_CONFIRM_SAMPLES_NEEDED = 2;               // both samples must be outside
+const EXIT_POLLING_TIMEOUT_MS    = 15 * 60 * 1000;  // give up after 15 min
+const FAR_DISTANCE_M             = 1500;             // fast exit if very far
 
-type AttendanceToday = {
-  id: string;
-  status: 'present' | 'wfh' | 'leave' | 'holiday' | 'absent' | string;
-  check_in: string | null;
-  check_out: string | null;
-};
+// ── Persisted State ───────────────────────────────────────────────────────────
+
+const STORAGE_KEY = 'officeorbit_automation_state_v2';
 
 type AutomationState = {
-  outsideSinceMs: number | null;
-  lastAutoActionAtMs: number | null;
-  lastAutoActionType: 'checkin' | 'checkout' | null;
+    pendingEnterAt      : number | null;   // ms timestamp when ENTER event fired
+    exitPollingStartMs  : number | null;   // ms timestamp when exit polling started
+    outsideSamplesCount : number;          // consecutive outside samples during exit confirm
 };
 
-const STORAGE_KEY = 'officeorbit_attendance_automation_v1';
-
-const RADIUS_METERS = 500;
-const COOLDOWN_MS = 10 * 60 * 1000;
-/** Fallback if profile minimum login minutes is missing (matches DB default ~8h). */
-const DEFAULT_MINIMUM_LOGIN_MINUTES = 480;
-/**
- * Minimum-stay before allowing auto-checkout is derived from the user's configured minimum daily login.
- * We use 50% as the guardrail window against GPS drift right after check-in.
- */
-const MIN_STAY_FRACTION_OF_MINIMUM_LOGIN = 0.5;
-/** Safety floor so tiny configured minimums don't collapse protections entirely. */
-const MIN_STAY_FLOOR_MS = 10 * 60 * 1000;
-const OUTSIDE_LONG_BREAK_MS = 90 * 60 * 1000;
-
-// If user is clearly far away, allow faster checkout.
-const FAR_DISTANCE_METERS = 1500;
-const FAR_DISTANCE_CONFIRM_MS = 15 * 60 * 1000;
-
-const safeJsonParse = <T,>(raw: string | null): T | null => {
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as T;
-  } catch {
-    return null;
-  }
+const DEFAULT_STATE: AutomationState = {
+    pendingEnterAt      : null,
+    exitPollingStartMs  : null,
+    outsideSamplesCount : 0,
 };
 
 const loadState = async (): Promise<AutomationState> => {
-  const raw = await SecureStore.getItemAsync(STORAGE_KEY);
-  const parsed = safeJsonParse<AutomationState>(raw);
-  return {
-    outsideSinceMs: parsed?.outsideSinceMs ?? null,
-    lastAutoActionAtMs: parsed?.lastAutoActionAtMs ?? null,
-    lastAutoActionType: parsed?.lastAutoActionType ?? null,
-  };
-};
-
-const saveState = async (state: AutomationState) => {
-  try {
-    await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // If storage fails, proceed without persistence.
-  }
-};
-
-const isInCooldown = (state: AutomationState, nowMs: number) => {
-  if (!state.lastAutoActionAtMs) return false;
-  return nowMs - state.lastAutoActionAtMs < COOLDOWN_MS;
-};
-
-const asSampleTimeMs = (sample: Pick<LocationObject, 'timestamp'>): number => {
-  // expo-location timestamp is ms on most platforms, but keep it safe.
-  const ts = (sample as any)?.timestamp;
-  if (typeof ts === 'number') return ts;
-  return Date.now();
-};
-
-const sortSamplesAsc = (samples: LocationObject[]) =>
-  [...samples].sort((a, b) => asSampleTimeMs(a) - asSampleTimeMs(b));
-
-export async function processAttendanceLocationSamples(
-  samples: LocationObject[],
-  source: 'background' | 'oneshot'
-) {
-  if (!samples || samples.length === 0) return;
-
-  // Skip weekends — no auto-attendance on Saturday/Sunday.
-  const today = new Date();
-  const dayOfWeek = today.getDay();
-  if (dayOfWeek === 0 || dayOfWeek === 6) return;
-
-  const sorted = sortSamplesAsc(samples).filter((s) => !!s?.coords);
-  if (sorted.length === 0) return;
-
-  // Fetch profile once per run (office location + minimum login settings).
-  const { data: profile, error: profileError } = await callApi<Profile>('profile-get');
-  if (profileError || !profile?.company_location) return;
-
-  const minimumLoginMinutes =
-    typeof profile.minimum_login_time_minutes === 'number' && profile.minimum_login_time_minutes > 0
-      ? profile.minimum_login_time_minutes
-      : DEFAULT_MINIMUM_LOGIN_MINUTES;
-
-  const minStayBeforeCheckoutMs = Math.max(
-    MIN_STAY_FLOOR_MS,
-    Math.round(minimumLoginMinutes * MIN_STAY_FRACTION_OF_MINIMUM_LOGIN * 60 * 1000)
-  );
-
-  // Fetch today log once per run; we update local copy after actions.
-  const todayResp = await callApi<AttendanceToday>('attendance-today');
-  let todayLog = todayResp.data ?? null;
-
-  // Calendar-managed day (status without timestamps) — do not run GPS automation.
-  if (isCalendarManagedDay(todayLog as any)) {
-    return;
-  }
-
-  // Skip on holiday/leave.
-  if (todayLog && (todayLog.status === 'holiday' || todayLog.status === 'leave')) {
-    return;
-  }
-
-  let state = await loadState();
-
-  const officeLat = profile.company_location.latitude;
-  const officeLng = profile.company_location.longitude;
-
-  for (const sample of sorted) {
-    const nowMs = asSampleTimeMs(sample);
-
-    const distance = getDistanceFromLatLonInMeters(
-      sample.coords.latitude,
-      sample.coords.longitude,
-      officeLat,
-      officeLng
-    );
-
-    const inside = distance <= RADIUS_METERS;
-
-    // Track outside duration for break/checkout logic.
-    if (inside) {
-      if (state.outsideSinceMs) {
-        state.outsideSinceMs = null;
-        await saveState(state);
-      }
-    } else {
-      if (!state.outsideSinceMs) {
-        state.outsideSinceMs = nowMs;
-        await saveState(state);
-      }
+    try {
+        const raw = await SecureStore.getItemAsync(STORAGE_KEY);
+        if (!raw) return { ...DEFAULT_STATE };
+        return { ...DEFAULT_STATE, ...JSON.parse(raw) };
+    } catch {
+        return { ...DEFAULT_STATE };
     }
+};
 
-    // Cooldown prevents action spam, but we still track outsideSince.
-    if (isInCooldown(state, nowMs)) {
-      continue;
-    }
+const saveState = async (state: AutomationState): Promise<void> => {
+    try {
+        await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(state));
+    } catch { /* proceed without persistence */ }
+};
 
-    // Auto check-in: anytime if inside radius and no log exists yet.
-    if (inside && !todayLog) {
-      const { data: checkinData, error: checkInError } = await clockIn('present', {
-        latitude: sample.coords.latitude,
-        longitude: sample.coords.longitude,
-        address: source === 'oneshot' ? 'Auto-Detected at Office (Login)' : 'Auto-Detected at Office',
-      });
+const clearState = async (): Promise<void> => saveState({ ...DEFAULT_STATE });
 
-      if (checkInError) {
-        await addNotification({
-          title: 'Auto check-in failed',
-          body: checkInError.message || 'Automatic office check-in could not be completed.',
-          type: 'automation',
+// ── Profile / Day helpers ─────────────────────────────────────────────────────
+
+type OfficeLoc = { latitude: number; longitude: number };
+
+const fetchOfficeLocation = async (): Promise<OfficeLoc | null> => {
+    const { data: profile, error } = await callApi<{ company_location: OfficeLoc | null }>('profile-get');
+    if (error || !profile?.company_location) return null;
+    return profile.company_location;
+};
+
+const isWeekend = (): boolean => {
+    const day = new Date().getDay();
+    return day === 0 || day === 6;
+};
+
+const getCurrentPosition = async (): Promise<Location.LocationObject | null> => {
+    try {
+        return await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
         });
-      } else {
-        todayLog = (checkinData as any) ?? todayLog;
-        state.lastAutoActionAtMs = nowMs;
-        state.lastAutoActionType = 'checkin';
-        await saveState(state);
-        await addNotification({
-          title: 'Auto check-in completed',
-          body: 'You arrived at office and attendance was marked automatically.',
-          type: 'automation',
-        });
-      }
-
-      continue;
+    } catch {
+        return null;
     }
+};
 
-    // Auto checkout: only if checked-in and currently outside.
-    if (!inside && todayLog && todayLog.status === 'present' && !todayLog.check_out) {
-      // Minimum stay guardrail.
-      const checkInMs = todayLog.check_in ? new Date(todayLog.check_in).getTime() : null;
-      if (!checkInMs || nowMs - checkInMs < minStayBeforeCheckoutMs) {
-        continue;
-      }
+// ── Main Handlers ─────────────────────────────────────────────────────────────
 
-      const outsideDurationMs = state.outsideSinceMs ? nowMs - state.outsideSinceMs : 0;
+/**
+ * Called immediately when the OS fires a GEOFENCE_ENTER event.
+ *
+ * Strategy: Don't check in immediately. Store the pending enter timestamp
+ * and take a confirming GPS sample after DWELL_CONFIRM_DELAY_MS (5 min).
+ * This filters out bike/car pass-bys that cross the 500m fence briefly.
+ *
+ * Note: Background tasks in React Native can't reliably use setTimeout.
+ * We immediately start ACTIVE_POLLING_TASK which samples GPS every 3 min.
+ * When the polling task runs, it checks if 5 min has passed since pendingEnterAt.
+ * If the user is still inside, it confirms check-in and stops the polling task.
+ */
+export async function handleGeofenceEnter(): Promise<void> {
+    if (isWeekend()) return;
 
-      const longBreak = outsideDurationMs >= OUTSIDE_LONG_BREAK_MS;
-      const farFastCheckout =
-        distance >= FAR_DISTANCE_METERS && outsideDurationMs >= FAR_DISTANCE_CONFIRM_MS;
+    const state = await loadState();
+    const nowMs = Date.now();
 
-      if (!longBreak && !farFastCheckout) {
-        // Optional: for background only, we can notify once when outside is detected.
-        // Avoid spamming—only when just started outside window.
-        if (source === 'background' && outsideDurationMs < 2 * 60 * 1000) {
-          await addNotification({
-            title: 'Outside office boundary detected',
-            body: 'You are outside the office area. Attendance will auto-checkout if you stay outside for long.',
-            type: 'location',
-          });
-        }
-        continue;
-      }
+    // Already have a pending enter — ignore duplicate ENTER events (GPS flicker)
+    if (state.pendingEnterAt) return;
 
-      const { error: clockOutError } = await clockOut();
-      if (clockOutError) {
-        await addNotification({
-          title: 'Auto checkout failed',
-          body: clockOutError.message || 'Automatic checkout could not be completed.',
-          type: 'automation',
-        });
-        continue;
-      }
+    // Clear any stale exit state
+    state.exitPollingStartMs  = null;
+    state.outsideSamplesCount = 0;
+    state.pendingEnterAt      = nowMs;
+    await saveState(state);
 
-      state.lastAutoActionAtMs = nowMs;
-      state.lastAutoActionType = 'checkout';
-      state.outsideSinceMs = null;
-      await saveState(state);
+    // Check today's record — if already manual-override, skip
+    const { data: todayRecord } = await callApi<{ is_manual_override?: boolean }>('attendance-today');
+    if ((todayRecord as any)?.is_manual_override) return;
 
-      await addNotification({
-        title: 'Auto checkout completed',
-        body: 'You were checked out automatically after leaving office.',
-        type: 'automation',
-      });
-
-      // Once checked out, stop processing further samples in this batch.
-      break;
+    // Schedule dwell confirmation: take a GPS sample now.
+    // If we're still inside after 5 min, confirm.
+    // We start the active polling task so the app wakes up to do this check.
+    await confirmDwellIfReady(state);
+    
+    if (state.pendingEnterAt) {
+        await startActivePolling();
     }
-  }
 }
 
+/**
+ * Internal: checks if 5-min dwell has passed and user is still inside.
+ * If yes → calls check-in API and fires notifications.
+ * Returns true if the dwell was confirmed or cancelled (meaning we can stop polling for it).
+ */
+export async function confirmDwellIfReady(state?: AutomationState): Promise<boolean> {
+    if (!state) state = await loadState();
+    if (!state.pendingEnterAt) return false;
+
+    const nowMs  = Date.now();
+    const dwellMs = nowMs - state.pendingEnterAt;
+
+    if (dwellMs < DWELL_CONFIRM_DELAY_MS) {
+        // Not enough time has passed yet — wait for next wake
+        return false;
+    }
+
+    // Take a confirming GPS sample
+    const pos = await getCurrentPosition();
+    if (!pos) return false;
+
+    const office = await fetchOfficeLocation();
+    if (!office) return false;
+
+    const distance = getDistanceFromLatLonInMeters(
+        pos.coords.latitude, pos.coords.longitude,
+        office.latitude, office.longitude,
+    );
+
+    if (distance > GEOFENCE_RADIUS_M) {
+        // User has already left — was a pass-by
+        await clearState();
+        return true;
+    }
+
+    // ✅ Confirmed: user is still inside after 5 min → check in
+    state.pendingEnterAt = null;
+    await saveState(state);
+
+    const { error } = await callApi('check-in', {
+        location: {
+            latitude : pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            address  : 'Auto-Detected at Office',
+        },
+        status: 'present',
+        source: 'geofence',
+    });
+
+    if (error) {
+        await addNotification({
+            title: 'Auto check-in failed',
+            body : error || 'Could not mark attendance automatically.',
+            type : 'automation',
+        });
+    } else {
+        // ✅ Fire BOTH device push + in-app notification
+        await sendDeviceNotification(
+            '🏢 Arrived at Office',
+            'You\'ve been checked in automatically. Have a great day!',
+        );
+        await addNotification({
+            title: 'Checked in to Office',
+            body : 'Attendance marked automatically when you arrived.',
+            type : 'automation',
+        });
+    }
+    
+    return true; // Finished processing the dwell
+}
+
+/**
+ * Called when the OS fires a GEOFENCE_EXIT event.
+ *
+ * Starts exit confirmation polling (EXIT_CONFIRM_TASK).
+ * The poller will call handleExitConfirmSample() every ~3 min.
+ */
+export async function handleGeofenceExit(): Promise<void> {
+    if (isWeekend()) return;
+
+    // Check today's record
+    const { data: todayRecord } = await callApi<any>('attendance-today');
+    if (!todayRecord) return;                              // never checked in
+    if ((todayRecord as any)?.is_manual_override) return;  // manual day — don't touch
+    if (todayRecord.check_out) return;                     // already fully checked out
+
+    // Clear any pending enter (exit fires after enter — discard drive-by)
+    const state = await loadState();
+    if (state.pendingEnterAt) {
+        const dwellMs = Date.now() - state.pendingEnterAt;
+        if (dwellMs < DWELL_CONFIRM_DELAY_MS) {
+            // Left before 5-min dwell — was a pass-by, never actually checked in
+            await clearState();
+            return;
+        }
+    }
+
+    // If no open session exists (user was never confirmed inside), skip
+    const { data: sessionData } = await callApi<any>('session-status');
+    if (!sessionData?.is_inside) return;
+
+    // Start exit confirmation polling
+    state.exitPollingStartMs  = Date.now();
+    state.outsideSamplesCount = 0;
+    state.pendingEnterAt      = null;
+    await saveState(state);
+
+    await startActivePolling();
+}
+
+/**
+ * Called by ACTIVE_POLLING_TASK every ~3 min with a fresh GPS sample.
+ *
+ * Checks if we need to confirm Dwell OR Exit.
+ * Returns true when polling is no longer needed (caller should stop the polling task).
+ */
+export async function handleActivePollingSample(
+    sample: Location.LocationObject,
+): Promise<boolean> {
+    if (isWeekend()) return true;
+
+    const state = await loadState();
+    const nowMs = Date.now();
+    
+    let finishedDwell = false;
+    
+    // 1. Process pending Enter Dwell if it exists
+    if (state.pendingEnterAt) {
+        finishedDwell = await confirmDwellIfReady(state);
+    }
+
+    // 2. Process Exit Polling if it exists
+    if (!state.exitPollingStartMs) {
+        // If we don't have an exit polling active, and we finished the dwell, we can stop polling.
+        return finishedDwell || !state.pendingEnterAt;
+    }
+
+    // Timeout guard for Exit Polling
+    if (
+        state.exitPollingStartMs &&
+        nowMs - state.exitPollingStartMs > EXIT_POLLING_TIMEOUT_MS
+    ) {
+        await clearState();
+        return true; // stop polling
+    }
+
+    const office = await fetchOfficeLocation();
+    if (!office) return false;
+
+    const distance = getDistanceFromLatLonInMeters(
+        sample.coords.latitude, sample.coords.longitude,
+        office.latitude, office.longitude,
+    );
+
+    const isInside   = distance <= GEOFENCE_RADIUS_M;
+    const isFarAway  = distance >= FAR_DISTANCE_M;
+
+    if (isInside) {
+        // User came back — cancel exit confirmation, re-enter flow
+        state.outsideSamplesCount = 0;
+        state.exitPollingStartMs  = null;
+        state.pendingEnterAt      = Date.now(); // treat as re-entry
+        await saveState(state);
+        return true; // stop exit confirm polling
+    }
+
+    if (isFarAway) {
+        // Clearly left — single far sample is enough
+        await performCheckout(sample);
+        await clearState();
+        return true;
+    }
+
+    // Outside but not far — accumulate samples
+    state.outsideSamplesCount = (state.outsideSamplesCount ?? 0) + 1;
+    await saveState(state);
+
+    if (state.outsideSamplesCount >= EXIT_CONFIRM_SAMPLES_NEEDED) {
+        await performCheckout(sample);
+        await clearState();
+        return true;
+    }
+
+    return false; // need more samples
+}
+
+// ── Checkout helper ───────────────────────────────────────────────────────────
+
+async function performCheckout(sample?: Location.LocationObject): Promise<void> {
+    const { data: result, error, message } = await callApi<any>('check-out', {
+        source: 'geofence',
+    });
+
+    if (error) {
+        await addNotification({
+            title: 'Auto check-out failed',
+            body : error || 'Could not mark departure automatically.',
+            type : 'automation',
+        });
+        return;
+    }
+
+    // Build a friendly duration string from the message or result
+    const totalMinutes : number = result?.total_minutes ?? result?.duration_minutes ?? 0;
+    const hrs  = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    const durationStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+    const status: string = result?.status ?? 'present';
+    const statusLabel = status === 'present' ? '✅ Present' : status === 'wfh' ? '🏠 WFH' : '❌ Absent';
+
+    // ✅ Fire BOTH device push + in-app notification
+    await sendDeviceNotification(
+        `${statusLabel} — ${durationStr} logged today`,
+        status === 'present'
+            ? `Great work! You've met today's attendance requirement.`
+            : status === 'wfh'
+            ? `You were in office for ${durationStr}. Day marked as Work From Home.`
+            : `Only ${durationStr} logged. Attendance marked absent.`,
+    );
+
+    await addNotification({
+        title: `Checked out — ${durationStr} today`,
+        body : `Status: ${statusLabel}. ${message ?? ''}`.trim(),
+        type : 'automation',
+    });
+}

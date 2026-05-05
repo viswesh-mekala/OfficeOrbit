@@ -1,7 +1,7 @@
 import { useFonts } from 'expo-font';
 import { Stack, useSegments, router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet, BackHandler, Platform } from 'react-native';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -9,8 +9,11 @@ import { AuthProvider, useAuth } from '../store/AuthContext';
 import { theme } from '../theme/theme';
 import { TransitionOverlay } from '../components/common/TransitionOverlay';
 import { ToastProvider } from '../components/common/Toast';
-import { runAttendanceOneShot, startBackgroundUpdate, stopBackgroundUpdate } from '../services/LocationService';
-import '../services/BackgroundTasks'; // Register the task
+import { AppDialog } from '../components/common/AppDialog';
+import '../services/BackgroundTasks';
+import { registerGeofence, stopGeofence, unregisterLegacyTasks } from '../services/LocationService';
+import { requestNotificationPermissions } from '../services/NotificationService';
+import { flushOfflineQueue } from '../services/AttendanceService';
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({});
@@ -22,6 +25,7 @@ export default function RootLayout() {
   useEffect(() => {
     if (loaded) {
       SplashScreen.hideAsync();
+      unregisterLegacyTasks(); // Clean up ghost tasks from previous versions
     }
   }, [loaded]);
 
@@ -40,27 +44,36 @@ export default function RootLayout() {
 
 // Auth-gated navigation — production-grade like Flipkart/Amazon
 function RootLayoutNav() {
-  const { session, loading, profileLoading, isProfileComplete } = useAuth();
+  const { session, loading, profileLoading, isProfileComplete, profile } = useAuth();
   const segments = useSegments();
   const hasNavigated = useRef(false);
-  const didRunOneShotForUser = useRef<string | null>(null);
-  /** Track previous session to detect login/logout transitions */
   const prevSessionRef = useRef<typeof session>(undefined as any);
+  const geofenceRegisteredRef = useRef<string | null>(null); // tracks registered user+coords
 
-  // Monitor Auth for Background Location
+
+  // Register OS-native geofence when user is logged in with a complete profile
   useEffect(() => {
-    if (session && isProfileComplete) {
-      startBackgroundUpdate();
-      const userId = (session as any)?.user?.id ?? 'unknown';
-      if (didRunOneShotForUser.current !== userId) {
-        didRunOneShotForUser.current = userId;
-        runAttendanceOneShot();
+    if (session && isProfileComplete && profile?.company_location) {
+      const { latitude, longitude } = profile.company_location;
+      const coordKey = `${latitude},${longitude}`;
+
+      // Only re-register if coords changed (avoids redundant geofence re-registration)
+      if (geofenceRegisteredRef.current !== coordKey) {
+        geofenceRegisteredRef.current = coordKey;
+        registerGeofence(latitude, longitude);
       }
-    } else {
-      stopBackgroundUpdate();
-      didRunOneShotForUser.current = null;
+
+      // Request device notification permission once per session
+      requestNotificationPermissions();
+
+      // Flush any offline-queued attendance actions
+      flushOfflineQueue();
+    } else if (!session) {
+      geofenceRegisteredRef.current = null;
+      stopGeofence();
     }
-  }, [session, isProfileComplete]);
+  }, [session, isProfileComplete, profile?.company_location]);
+
 
   const currentRoute = (segments[0] as string) || 'index';
   const authRoutes = ['signin', 'signup', 'verify-otp', 'auth-callback'];
@@ -102,25 +115,33 @@ function RootLayoutNav() {
     }
   }, [session, loading, profileLoading, isProfileComplete, segments]);
 
-  // Block Android hardware back button on protected screens after login
+  // ── Android hardware back button ─────────────────────────────────────────
+  // MNC routing patterns:
+  //   Dashboard (home tab) → show branded exit dialog (Instagram/Slack pattern)
+  //   Other tabs           → silently jump to Dashboard (no stack trace-back)
+  //   Auth/onboarding      → let the OS handle it
+  const [showExitDialog, setShowExitDialog] = useState(false);
+
   useEffect(() => {
     if (Platform.OS !== 'android') return;
 
     const currentRoute = (segments[0] as string) || 'index';
-    const blockBackOn = ['dashboard', 'onboarding', 'attendance', 'profile', 'team'];
+    const tabRoutes = ['dashboard', 'attendance', 'profile', 'team'];
 
-    if (session && blockBackOn.includes(currentRoute)) {
-      const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-        // If on dashboard, exit the app (default behavior)
-        // If on other tabs, go to dashboard
-        if (currentRoute === 'dashboard') {
-          return false; // Let Android handle it (minimize app)
-        }
-        router.replace('/dashboard' as any);
-        return true; // Prevent default back
-      });
-      return () => backHandler.remove();
-    }
+    if (!session || !tabRoutes.includes(currentRoute)) return;
+
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (currentRoute === 'dashboard') {
+        // Home tab: show branded exit confirmation (never silently exit)
+        setShowExitDialog(true);
+        return true; // prevent default
+      }
+      // Other tabs: jump to home without adding to history
+      router.replace('/dashboard' as any);
+      return true;
+    });
+
+    return () => backHandler.remove();
   }, [session, segments]);
 
     // Determine if we should show the overlay
@@ -143,21 +164,38 @@ function RootLayoutNav() {
     return (
         <>
             <Stack screenOptions={{ animation: 'fade', headerShown: false }}>
-                <Stack.Screen name="index" options={{ headerShown: false, gestureEnabled: false }} />
-                <Stack.Screen name="signin" options={{ headerShown: false, gestureEnabled: false }} />
-                <Stack.Screen name="signup" options={{ headerShown: false, gestureEnabled: false }} />
-                <Stack.Screen name="verify-otp" options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="index"         options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="signin"        options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="signup"        options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="verify-otp"    options={{ headerShown: false, gestureEnabled: false }} />
                 <Stack.Screen name="auth-callback" options={{ headerShown: false, gestureEnabled: false }} />
-                <Stack.Screen name="onboarding" options={{ headerShown: false, gestureEnabled: false }} />
-                <Stack.Screen name="dashboard" options={{ headerShown: false, gestureEnabled: false }} />
-                <Stack.Screen name="attendance" options={{ headerShown: false, gestureEnabled: false }} />
-                <Stack.Screen name="profile" options={{ headerShown: false, gestureEnabled: false }} />
-                <Stack.Screen name="team" options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="onboarding"    options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="dashboard"     options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="attendance"    options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="profile"       options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="team"          options={{ headerShown: false, gestureEnabled: false }} />
             </Stack>
 
-            {/* Global Transition Overlay for Profile Loading, Auth Redirects, or other blocking states */}
+            {/* Exit app confirmation dialog (Android back on Dashboard) */}
+            <AppDialog
+                visible={showExitDialog}
+                icon="log-out-outline"
+                iconColor="#EF4444"
+                title="Exit OfficeOrbit?"
+                message="Your geofence attendance tracking will continue running in the background."
+                confirmLabel="Exit"
+                cancelLabel="Stay"
+                confirmDestructive
+                onConfirm={() => {
+                    setShowExitDialog(false);
+                    BackHandler.exitApp();
+                }}
+                onCancel={() => setShowExitDialog(false)}
+            />
+
+            {/* Global Transition Overlay */}
             {shouldShowOverlay && (
-              <TransitionOverlay 
+              <TransitionOverlay
                 message="Loading Profile..."
                 subMessage="Setting up your workspace"
               />

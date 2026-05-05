@@ -19,19 +19,27 @@ Deno.serve(async (req: Request) => {
     // deno-lint-ignore no-unused-vars
     const { id: _id, created_at: _created_at, email: _email, ...updateData } = body;
 
+    // Upsert (not update) — handles the case where the profile row doesn't exist
+    // yet on a fresh DB (trigger only fires on new signups, not existing auth users)
     const { data: updated, error } = await supabase
         .from('user_profiles')
-        .update({
-          ...updateData,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.id)
+        .upsert(
+          {
+            id: user.id,
+            email: user.email ?? '',
+            username: updateData.username ?? user.email?.split('@')[0] ?? 'User',
+            ...updateData,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' },
+        )
         .select()
         .single();
 
     if (error) throw error;
 
     return successResponse(updated, 'Profile updated successfully');
+
 
   } catch (error: any) {
     if (error.message === 'Unauthorized') {

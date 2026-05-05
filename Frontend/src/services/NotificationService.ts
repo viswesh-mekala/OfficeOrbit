@@ -1,5 +1,51 @@
 import * as SecureStore from 'expo-secure-store';
+import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 import { supabase } from './api/supabaseClient';
+
+// ── Device Push Notifications ─────────────────────────────────────────────────
+
+/**
+ * Request permission to show device notifications (banner + tray).
+ * Call once on app startup when the user is logged in.
+ */
+export const requestNotificationPermissions = async (): Promise<boolean> => {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    if (existingStatus === 'granted') return true;
+
+    const { status } = await Notifications.requestPermissionsAsync();
+    return status === 'granted';
+};
+
+/**
+ * Fire an immediate local device notification — appears in the device tray
+ * and as a banner even when the app is closed or backgrounded.
+ *
+ * This is separate from the in-app notification store (addNotification).
+ * Use both together for attendance events so the user always knows.
+ */
+export const sendDeviceNotification = async (
+    title: string,
+    body: string,
+): Promise<void> => {
+    try {
+        const { status } = await Notifications.getPermissionsAsync();
+        if (status !== 'granted') return;
+
+        await Notifications.scheduleNotificationAsync({
+            content: {
+                title,
+                body,
+                sound: true,
+                // Android: show on lock screen
+                ...(Platform.OS === 'android' && { priority: Notifications.AndroidNotificationPriority.HIGH }),
+            },
+            trigger: null, // fire immediately
+        });
+    } catch (error) {
+        console.error('[NotificationService] Device push failed:', error);
+    }
+};
 
 const STORAGE_KEY_PREFIX = 'officeorbit_notifications_v1';
 const MAX_NOTIFICATIONS = 75;
