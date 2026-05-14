@@ -23,11 +23,19 @@ import { callApi } from './api/apiClient';
 import { getDistanceFromLatLonInMeters } from '../utils/locationUtils';
 import { sendDeviceNotification, addNotification } from './NotificationService';
 import { startActivePolling } from './LocationService';
+import { queueOfflineAttendanceAction } from './AttendanceService';
+import {
+    clearPendingAttendanceRecovery,
+    isLikelyNetworkError,
+    queueAttendanceRecovery,
+    queueAttendanceRecoveryFromError,
+} from './AttendanceRecoveryService';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const GEOFENCE_RADIUS_M          = 500;   // Must match LocationService registration
 const DWELL_CONFIRM_DELAY_MS     = 5 * 60 * 1000;   // 5 min dwell before check-in
+const DWELL_RECOVERY_TIMEOUT_MS  = 30 * 60 * 1000;  // after this, ask the user to recover manually
 const EXIT_CONFIRM_SAMPLES_NEEDED = 2;               // both samples must be outside
 const EXIT_POLLING_TIMEOUT_MS    = 15 * 60 * 1000;  // give up after 15 min
 const FAR_DISTANCE_M             = 1500;             // fast exit if very far
@@ -139,7 +147,10 @@ export async function handleGeofenceEnter(): Promise<void> {
  * If yes → calls check-in API and fires notifications.
  * Returns true if the dwell was confirmed or cancelled (meaning we can stop polling for it).
  */
-export async function confirmDwellIfReady(state?: AutomationState): Promise<boolean> {
+export async function confirmDwellIfReady(
+    state?: AutomationState,
+    sample?: Location.LocationObject | null,
+): Promise<boolean> {
     if (!state) state = await loadState();
     if (!state.pendingEnterAt) return false;
 
@@ -151,12 +162,31 @@ export async function confirmDwellIfReady(state?: AutomationState): Promise<bool
         return false;
     }
 
-    // Take a confirming GPS sample
-    const pos = await getCurrentPosition();
-    if (!pos) return false;
+    // Reuse the polling sample when available so we don't depend on a second GPS fetch
+    const pos = sample ?? await getCurrentPosition();
+    if (!pos) {
+        if (dwellMs >= DWELL_RECOVERY_TIMEOUT_MS) {
+            await queueAttendanceRecovery({
+                action: 'checkin',
+                source: 'auto',
+                reason: 'location_unavailable',
+            });
+            await clearState();
+            return true;
+        }
+        return false;
+    }
 
     const office = await fetchOfficeLocation();
-    if (!office) return false;
+    if (!office) {
+        await queueAttendanceRecovery({
+            action: 'checkin',
+            source: 'auto',
+            reason: 'office_location_missing',
+        });
+        await clearState();
+        return true;
+    }
 
     const distance = getDistanceFromLatLonInMeters(
         pos.coords.latitude, pos.coords.longitude,
@@ -173,7 +203,7 @@ export async function confirmDwellIfReady(state?: AutomationState): Promise<bool
     state.pendingEnterAt = null;
     await saveState(state);
 
-    const { error } = await callApi('check-in', {
+    const checkInPayload = {
         location: {
             latitude : pos.coords.latitude,
             longitude: pos.coords.longitude,
@@ -181,15 +211,36 @@ export async function confirmDwellIfReady(state?: AutomationState): Promise<bool
         },
         status: 'present',
         source: 'geofence',
-    });
+    };
+
+    const { error } = await callApi('check-in', checkInPayload);
 
     if (error) {
+        if (isLikelyNetworkError(error)) {
+            await queueOfflineAttendanceAction('checkin', checkInPayload);
+            await queueAttendanceRecoveryFromError({
+                action: 'checkin',
+                source: 'auto',
+                errorMessage: error,
+                fallbackReason: 'network_error',
+                queuedOffline: true,
+            });
+            return true;
+        }
+
+        await queueAttendanceRecoveryFromError({
+            action: 'checkin',
+            source: 'auto',
+            errorMessage: error,
+            fallbackReason: 'api_failed',
+        });
         await addNotification({
             title: 'Auto check-in failed',
             body : error || 'Could not mark attendance automatically.',
             type : 'automation',
         });
     } else {
+        await clearPendingAttendanceRecovery('checkin');
         // ✅ Fire BOTH device push + in-app notification
         await sendDeviceNotification(
             '🏢 Arrived at Office',
@@ -262,7 +313,7 @@ export async function handleActivePollingSample(
     
     // 1. Process pending Enter Dwell if it exists
     if (state.pendingEnterAt) {
-        finishedDwell = await confirmDwellIfReady(state);
+        finishedDwell = await confirmDwellIfReady(state, sample);
     }
 
     // 2. Process Exit Polling if it exists
@@ -323,11 +374,30 @@ export async function handleActivePollingSample(
 // ── Checkout helper ───────────────────────────────────────────────────────────
 
 async function performCheckout(sample?: Location.LocationObject): Promise<void> {
-    const { data: result, error, message } = await callApi<any>('check-out', {
+    const checkoutPayload = {
         source: 'geofence',
-    });
+    };
+    const { data: result, error, message } = await callApi<any>('check-out', checkoutPayload);
 
     if (error) {
+        if (isLikelyNetworkError(error)) {
+            await queueOfflineAttendanceAction('checkout', checkoutPayload);
+            await queueAttendanceRecoveryFromError({
+                action: 'checkout',
+                source: 'auto',
+                errorMessage: error,
+                fallbackReason: 'network_error',
+                queuedOffline: true,
+            });
+            return;
+        }
+
+        await queueAttendanceRecoveryFromError({
+            action: 'checkout',
+            source: 'auto',
+            errorMessage: error,
+            fallbackReason: 'api_failed',
+        });
         await addNotification({
             title: 'Auto check-out failed',
             body : error || 'Could not mark departure automatically.',
@@ -335,6 +405,8 @@ async function performCheckout(sample?: Location.LocationObject): Promise<void> 
         });
         return;
     }
+
+    await clearPendingAttendanceRecovery('checkout');
 
     // Build a friendly duration string from the message or result
     const totalMinutes : number = result?.total_minutes ?? result?.duration_minutes ?? 0;

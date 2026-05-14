@@ -1,0 +1,14 @@
+appId: com.visweshmekala.officeorbit
+env:
+  TEST_EMAIL: ${TEST_EMAIL}
+  TEST_PASSWORD: ${TEST_PASSWORD}
+---
+# Preconditions:
+# 1. Sign in with a test account.
+# 2. Trigger a recoverable attendance failure first
+#    (for example: turn location off before manual check-in, or disconnect
+#    network during manual check-in/check-out so the dashboard stores a
+#    pending recovery state).
+- runFlow: authenticated-dashboard.yml
+- assertVisible:
+    id: "attendance-recovery-banner"

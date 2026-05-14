@@ -2,7 +2,7 @@ import { useFonts } from 'expo-font';
 import { Stack, useSegments, router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef, useState } from 'react';
-import { View, ActivityIndicator, StyleSheet, BackHandler, Platform } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, BackHandler, Platform, AppState } from 'react-native';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from '../store/AuthContext';
@@ -12,7 +12,11 @@ import { ToastProvider } from '../components/common/Toast';
 import { AppDialog } from '../components/common/AppDialog';
 import '../services/BackgroundTasks';
 import { registerGeofence, stopGeofence, unregisterLegacyTasks } from '../services/LocationService';
-import { requestNotificationPermissions } from '../services/NotificationService';
+import {
+  attachNotificationNavigation,
+  configureNotificationChannels,
+  requestNotificationPermissions,
+} from '../services/NotificationService';
 import { flushOfflineQueue } from '../services/AttendanceService';
 
 export default function RootLayout() {
@@ -50,29 +54,70 @@ function RootLayoutNav() {
   const prevSessionRef = useRef<typeof session>(undefined as any);
   const geofenceRegisteredRef = useRef<string | null>(null); // tracks registered user+coords
 
+  useEffect(() => {
+    void configureNotificationChannels();
+
+    return attachNotificationNavigation((route, params) => {
+      router.replace({
+        pathname: route as any,
+        params: params ?? {},
+      } as any);
+    });
+  }, []);
+
 
   // Register OS-native geofence when user is logged in with a complete profile
   useEffect(() => {
-    if (session && isProfileComplete && profile?.company_location) {
+    let cancelled = false;
+
+    const tryRegisterGeofence = async () => {
+      if (!session || !isProfileComplete || !profile?.company_location) return;
+
       const { latitude, longitude } = profile.company_location;
       const coordKey = `${latitude},${longitude}`;
 
-      // Only re-register if coords changed (avoids redundant geofence re-registration)
-      if (geofenceRegisteredRef.current !== coordKey) {
+      if (geofenceRegisteredRef.current === coordKey) return;
+
+      const registered = await registerGeofence(latitude, longitude);
+      if (!cancelled && registered) {
         geofenceRegisteredRef.current = coordKey;
-        registerGeofence(latitude, longitude);
       }
+    };
+
+    if (session && isProfileComplete && profile?.company_location) {
+      void tryRegisterGeofence();
+
+      const subscription = AppState.addEventListener('change', (nextState) => {
+        if (nextState === 'active') {
+          void tryRegisterGeofence();
+          void flushOfflineQueue();
+        }
+      });
 
       // Request device notification permission once per session
       requestNotificationPermissions();
 
       // Flush any offline-queued attendance actions
-      flushOfflineQueue();
-    } else if (!session) {
+      void flushOfflineQueue();
+
+      return () => {
+        cancelled = true;
+        subscription.remove();
+      };
+    } else {
       geofenceRegisteredRef.current = null;
-      stopGeofence();
+      void stopGeofence();
     }
-  }, [session, isProfileComplete, profile?.company_location]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    session,
+    isProfileComplete,
+    profile?.company_location?.latitude,
+    profile?.company_location?.longitude,
+  ]);
 
 
   const currentRoute = (segments[0] as string) || 'index';
@@ -203,5 +248,3 @@ function RootLayoutNav() {
         </>
     );
 }
-
-

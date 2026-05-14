@@ -1,0 +1,19 @@
+appId: com.visweshmekala.officeorbit
+env:
+  TEST_EMAIL: ${TEST_EMAIL}
+  TEST_PASSWORD: ${TEST_PASSWORD}
+---
+- runFlow: authenticated-dashboard.yml
+
+# We mock the location to exactly the office coordinates to trigger the geofence entry.
+- setLocation:
+    latitude: 12.97
+    longitude: 77.59
+
+# Wait for the system to process the location and the background task to run
+- extendedWaitUntil:
+    visible: "Checked in at office"
+    timeout: 30000
+
+# Assert that the status pill reflects the checked-in state
+- assertVisible: "Checked In"

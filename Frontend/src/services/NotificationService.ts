@@ -3,6 +3,24 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { supabase } from './api/supabaseClient';
 
+Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+    }),
+});
+
+const DEFAULT_ANDROID_CHANNEL = 'attendance-default';
+let notificationChannelsConfigured = false;
+let lastHandledNotificationId: string | null = null;
+
+export type DeviceNotificationRouteData = {
+    route?: string;
+    params?: Record<string, string>;
+};
+
 // ── Device Push Notifications ─────────────────────────────────────────────────
 
 /**
@@ -17,6 +35,20 @@ export const requestNotificationPermissions = async (): Promise<boolean> => {
     return status === 'granted';
 };
 
+export const configureNotificationChannels = async (): Promise<void> => {
+    if (Platform.OS !== 'android' || notificationChannelsConfigured) return;
+
+    await Notifications.setNotificationChannelAsync(DEFAULT_ANDROID_CHANNEL, {
+        name: 'Attendance Alerts',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 150, 250],
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        sound: 'default',
+    });
+
+    notificationChannelsConfigured = true;
+};
+
 /**
  * Fire an immediate local device notification — appears in the device tray
  * and as a banner even when the app is closed or backgrounded.
@@ -27,18 +59,25 @@ export const requestNotificationPermissions = async (): Promise<boolean> => {
 export const sendDeviceNotification = async (
     title: string,
     body: string,
+    routeData?: DeviceNotificationRouteData,
 ): Promise<void> => {
     try {
         const { status } = await Notifications.getPermissionsAsync();
         if (status !== 'granted') return;
+
+        await configureNotificationChannels();
 
         await Notifications.scheduleNotificationAsync({
             content: {
                 title,
                 body,
                 sound: true,
+                data: routeData ?? {},
                 // Android: show on lock screen
-                ...(Platform.OS === 'android' && { priority: Notifications.AndroidNotificationPriority.HIGH }),
+                ...(Platform.OS === 'android' && {
+                    priority: Notifications.AndroidNotificationPriority.HIGH,
+                    channelId: DEFAULT_ANDROID_CHANNEL,
+                }),
             },
             trigger: null, // fire immediately
         });
@@ -177,5 +216,44 @@ export const subscribeNotifications = (listener: NotificationsListener) => {
     getNotifications().then(listener).catch(() => listener([]));
     return () => {
         listeners.delete(listener);
+    };
+};
+
+const extractRouteData = (
+    response: Notifications.NotificationResponse | null | undefined,
+): DeviceNotificationRouteData | null => {
+    if (!response) return null;
+
+    const identifier = response.notification.request.identifier;
+    if (identifier === lastHandledNotificationId) return null;
+
+    const data = response.notification.request.content.data as DeviceNotificationRouteData | undefined;
+    if (!data?.route) return null;
+
+    lastHandledNotificationId = identifier;
+    return {
+        route: data.route,
+        params: data.params ?? {},
+    };
+};
+
+export const attachNotificationNavigation = (
+    onNavigate: (route: string, params?: Record<string, string>) => void,
+) => {
+    const handleResponse = (
+        response: Notifications.NotificationResponse | null | undefined,
+    ) => {
+        const routeData = extractRouteData(response);
+        if (!routeData?.route) return;
+        onNavigate(routeData.route, routeData.params);
+    };
+
+    Notifications.getLastNotificationResponseAsync()
+        .then(handleResponse)
+        .catch(() => undefined);
+
+    const subscription = Notifications.addNotificationResponseReceivedListener(handleResponse);
+    return () => {
+        subscription.remove();
     };
 };

@@ -26,6 +26,7 @@ interface SlideActionProps {
     color?: string;
     disabled?: boolean;
     loading?: boolean;
+    testID?: string;
 }
 
 export const SlideAction: React.FC<SlideActionProps> = ({ 
@@ -34,7 +35,8 @@ export const SlideAction: React.FC<SlideActionProps> = ({
     icon = "chevron-forward",
     color = theme.colors.primary,
     disabled = false,
-    loading = false
+    loading = false,
+    testID,
 }) => {
     const translateX = useSharedValue(0);
     const maxTranslateX = SWIPE_WIDTH - BUTTON_HEIGHT;
@@ -95,7 +97,10 @@ export const SlideAction: React.FC<SlideActionProps> = ({
     });
 
     return (
-        <View style={[styles.container, { opacity: disabled ? 0.6 : 1 }]}>
+        <View
+            style={[styles.container, { opacity: disabled ? 0.6 : 1 }]}
+            testID={testID}
+        >
             {/* Background Track */}
             <View style={[styles.track, { backgroundColor: theme.colors.background }]}>
                 
@@ -111,7 +116,11 @@ export const SlideAction: React.FC<SlideActionProps> = ({
 
                 {/* Knob */}
                 <GestureDetector gesture={pan}>
-                    <Animated.View style={[styles.button, buttonStyle]}>
+                    <Animated.View
+                        style={[styles.button, buttonStyle]}
+                        testID={testID ? `${testID}-knob` : undefined}
+                        accessibilityLabel={testID ? `${testID}-knob` : undefined}
+                    >
                         <Ionicons 
                             name={icon} 
                             size={24} 

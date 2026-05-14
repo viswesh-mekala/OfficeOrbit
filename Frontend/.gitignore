@@ -22,6 +22,10 @@ ios/
 *.key
 *.mobileprovision
 *.orig.*
+coverage/
+maestro-report/
+.maestro/screenshots/
+.maestro/test-output/
 
 # Metro
 .metro-health-check*

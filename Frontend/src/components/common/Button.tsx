@@ -11,6 +11,8 @@ interface ButtonProps {
     textStyle?: TextStyle;
     disabled?: boolean;
     loading?: boolean;
+    testID?: string;
+    accessibilityLabel?: string;
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -23,6 +25,8 @@ export const Button: React.FC<ButtonProps> = ({
     textStyle,
     disabled = false,
     loading = false,
+    testID,
+    accessibilityLabel,
 }) => {
     const scale = useSharedValue(1);
     const shadowOpacity = useSharedValue(0.3);
@@ -74,6 +78,8 @@ export const Button: React.FC<ButtonProps> = ({
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}
             disabled={isEffectiveDisabled}
+            testID={testID}
+            accessibilityLabel={accessibilityLabel}
         >
             {loading ? (
                 <ActivityIndicator color={variant === 'primary' ? 'white' : theme.colors.primary} />

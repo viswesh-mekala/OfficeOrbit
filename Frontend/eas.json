@@ -11,6 +11,13 @@
     "preview": {
       "distribution": "internal"
     },
+    "e2e-test": {
+      "distribution": "internal",
+      "withoutCredentials": true,
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "production": {
       "autoIncrement": true
     }

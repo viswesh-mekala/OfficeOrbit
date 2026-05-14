@@ -2,6 +2,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Alert, AppState, Linking, Platform } from 'react-native';
 import { addNotification } from './NotificationService';
+import { queueAttendanceRecovery } from './AttendanceRecoveryService';
 
 export const GEOFENCE_REGION_TASK = 'OFFICEORBIT_GEOFENCE_REGION';
 export const ACTIVE_POLLING_TASK  = 'OFFICEORBIT_ACTIVE_POLLING';
@@ -45,6 +46,11 @@ export const requestPermissions = async (): Promise<boolean> => {
             body: 'OfficeOrbit needs location access to verify office check-ins and automate attendance.',
             type: 'location',
         });
+        await queueAttendanceRecovery({
+            action: 'checkin',
+            source: 'auto',
+            reason: 'location_permission',
+        });
         return false;
     }
 
@@ -62,6 +68,11 @@ export const requestPermissions = async (): Promise<boolean> => {
             title: 'Background location needed',
             body: 'For automatic office check-in, OfficeOrbit needs "Allow all the time" location access.',
             type: 'location',
+        });
+        await queueAttendanceRecovery({
+            action: 'checkin',
+            source: 'auto',
+            reason: 'background_location_permission',
         });
         return false;
     }
@@ -81,11 +92,11 @@ export const requestPermissions = async (): Promise<boolean> => {
 export const registerGeofence = async (
     officeLat: number,
     officeLng: number,
-): Promise<void> => {
-    if (AppState.currentState !== 'active') return;
+): Promise<boolean> => {
+    if (AppState.currentState !== 'active') return false;
 
     const hasPermissions = await requestPermissions();
-    if (!hasPermissions) return;
+    if (!hasPermissions) return false;
 
     try {
         // Stop any stale geofence first
@@ -103,10 +114,12 @@ export const registerGeofence = async (
                 notifyOnExit : true,
             },
         ]);
+        return true;
     } catch (error: any) {
         if (!error?.message?.includes('foreground service') && !error?.message?.includes('background')) {
             console.error('[LocationService] Failed to register geofence:', error);
         }
+        return false;
     }
 };
 
@@ -137,8 +150,10 @@ export const startActivePolling = async (): Promise<void> => {
         await Location.startLocationUpdatesAsync(ACTIVE_POLLING_TASK, {
             accuracy              : Location.Accuracy.Balanced,
             distanceInterval      : 0,
+            timeInterval          : 60 * 1000,
             deferredUpdatesInterval: 3 * 60 * 1000,   // sample every 3 min
             deferredUpdatesDistance: 0,
+            pausesUpdatesAutomatically: false,
             foregroundService: {
                 notificationTitle: 'OfficeOrbit',
                 notificationBody : 'Verifying attendance...',

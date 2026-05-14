@@ -10,6 +10,7 @@ import {
   Modal,
   TouchableOpacity,
   Pressable,
+  Linking,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { theme } from '../../theme/theme';
@@ -20,17 +21,29 @@ import { MetricCard } from '../../components/common/MetricCard';
 import { AlertCard } from '../../components/common/AlertCard';
 import { WeeklyStatCard } from '../../components/common/WeeklyStatCard';
 import { useToast } from '../../components/common/Toast';
+import { useLocalSearchParams } from 'expo-router';
 
 import { useAuth } from '../../store/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as SecureStore from 'expo-secure-store';
 import { useAttendance } from '../../hooks/useAttendance';
+import { useAttendanceRecovery } from '../../hooks/useAttendanceRecovery';
 import { AppDialog } from '../../components/common/AppDialog';
 import { SlideAction } from '../../components/common/SlideAction';
-import { clockIn, clockOut } from '../../services/AttendanceService';
+import {
+  clockIn,
+  clockOut,
+  queueOfflineAttendanceAction,
+} from '../../services/AttendanceService';
 import { getDistanceFromLatLonInMeters } from '../../utils/locationUtils';
 import { addNotification, sendDeviceNotification } from '../../services/NotificationService';
+import { AttendanceRecoveryBanner } from '../../components/common/AttendanceRecoveryBanner';
+import {
+  isLikelyNetworkError,
+  queueAttendanceRecovery,
+  queueAttendanceRecoveryFromError,
+} from '../../services/AttendanceRecoveryService';
 import {
   isCalendarManagedDay,
   liveDurationMinutes,
@@ -43,6 +56,7 @@ import {
 } from '../../utils/wfoStreak';
 
 export const Dashboard: React.FC = () => {
+  const params = useLocalSearchParams<{ recovery?: string }>();
   const { user: authUser, profile, loading: authLoading } = useAuth();
   const { showToast } = useToast();
   const {
@@ -53,11 +67,13 @@ export const Dashboard: React.FC = () => {
     refreshing,
     optimisticUpdate,
   } = useAttendance();
+  const { pendingRecovery, clearRecovery } = useAttendanceRecovery();
 
   const [isSubmittingAttendance, setIsSubmittingAttendance] = useState(false);
   const [streakModalVisible, setStreakModalVisible] = useState(false);
   const [persistedStreakCount, setPersistedStreakCount] = useState(0);
   const [showFirstDayHint, setShowFirstDayHint] = useState(false);
+  const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
 
   // Fallback data
   const userName = profile?.username || authUser?.user_metadata?.name || 'User';
@@ -85,6 +101,25 @@ export const Dashboard: React.FC = () => {
       cancelled = true;
     };
   }, [authUser?.id]);
+
+  useEffect(() => {
+    if (!pendingRecovery) return;
+
+    if (pendingRecovery.action === 'checkin' && todayLog?.check_in) {
+      void clearRecovery('checkin');
+      return;
+    }
+
+    if (pendingRecovery.action === 'checkout' && todayLog?.check_out) {
+      void clearRecovery('checkout');
+    }
+  }, [clearRecovery, pendingRecovery, todayLog?.check_in, todayLog?.check_out]);
+
+  useEffect(() => {
+    if (params.recovery === '1' && pendingRecovery) {
+      setShowRecoveryDialog(true);
+    }
+  }, [params.recovery, pendingRecovery]);
 
   // ── First Day "Teachable Moment" Check ──
   useEffect(() => {
@@ -191,6 +226,42 @@ export const Dashboard: React.FC = () => {
     }
   }
 
+  const dismissRecoveryBanner = async () => {
+    setShowRecoveryDialog(false);
+    await clearRecovery();
+  };
+
+  const openRecoverySettings = async () => {
+    setShowRecoveryDialog(false);
+    await Linking.openSettings();
+  };
+
+  const queueManualFailureRecovery = async (input: {
+    action: 'checkin' | 'checkout';
+    errorMessage?: string | null;
+    reason?: 'location_permission' | 'location_off' | 'location_unavailable' | 'network_error' | 'api_failed' | 'office_location_missing';
+    queuedOffline?: boolean;
+  }) => {
+    if (input.reason) {
+      await queueAttendanceRecovery({
+        action: input.action,
+        source: 'manual',
+        reason: input.reason,
+        detail: input.errorMessage ?? null,
+        queuedOffline: input.queuedOffline,
+      });
+      return;
+    }
+
+    await queueAttendanceRecoveryFromError({
+      action: input.action,
+      source: 'manual',
+      errorMessage: input.errorMessage,
+      fallbackReason: 'api_failed',
+      queuedOffline: input.queuedOffline,
+    });
+  };
+
   const handleSwipeAction = async () => {
     if (!authUser?.id || isSubmittingAttendance) return;
 
@@ -211,9 +282,20 @@ export const Dashboard: React.FC = () => {
       if (todayLog && !todayLog.check_out) {
         // Update UI right now — user sees 'Checked Out' before API responds
         const rollback = optimisticUpdate({ check_out: new Date().toISOString() });
+        const checkoutPayload = { source: 'manual' as const };
         const { data: checkoutResult, error } = await clockOut('manual');
         if (error) {
           rollback(); // revert the optimistic change
+          const isNetworkFailure = isLikelyNetworkError(error.message);
+          if (isNetworkFailure) {
+            await queueOfflineAttendanceAction('checkout', checkoutPayload);
+          }
+          await queueManualFailureRecovery({
+            action: 'checkout',
+            errorMessage: error.message,
+            reason: isNetworkFailure ? 'network_error' : undefined,
+            queuedOffline: isNetworkFailure,
+          });
           await addNotification({
             title: 'Check-out failed',
             body: error.message || 'We could not check you out. Please try again.',
@@ -221,6 +303,7 @@ export const Dashboard: React.FC = () => {
           });
           showToast({ title: 'Check-out failed', message: error.message || 'Please try again.', variant: 'error' });
         } else {
+          await clearRecovery('checkout');
           refresh();
           const totalMin: number = (checkoutResult as any)?.total_minutes ?? (checkoutResult as any)?.duration_minutes ?? 0;
           const hrs = Math.floor(totalMin / 60);
@@ -240,8 +323,27 @@ export const Dashboard: React.FC = () => {
 
 
       // CASE 2: Check In
+      const servicesEnabled = await Location.hasServicesEnabledAsync();
+      if (!servicesEnabled) {
+        await queueManualFailureRecovery({
+          action: 'checkin',
+          reason: 'location_off',
+        });
+        await addNotification({
+          title: 'Location is off',
+          body: 'Turn on location services to continue check-in.',
+          type: 'location',
+        });
+        showToast({ title: 'Location is off', message: 'Enable location services to check in.', variant: 'warning' });
+        return;
+      }
+
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
+        await queueManualFailureRecovery({
+          action: 'checkin',
+          reason: 'location_permission',
+        });
         await addNotification({
           title: 'Location permission required',
           body: 'Enable location access to continue check-in.',
@@ -277,14 +379,29 @@ export const Dashboard: React.FC = () => {
             check_in: new Date().toISOString(),
             status  : 'present',
           });
-          const { error } = await clockIn('present', {
+          const manualOfficePayload = {
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
             address: 'Office (Manual Swipe)',
-          }, 'manual');
+          };
+          const { error } = await clockIn('present', manualOfficePayload, 'manual');
 
           if (error) {
             rollback(); // revert optimistic update
+            const isNetworkFailure = isLikelyNetworkError(error.message);
+            if (isNetworkFailure) {
+              await queueOfflineAttendanceAction('checkin', {
+                location: manualOfficePayload,
+                status: 'present',
+                source: 'manual',
+              });
+            }
+            await queueManualFailureRecovery({
+              action: 'checkin',
+              errorMessage: error.message,
+              reason: isNetworkFailure ? 'network_error' : undefined,
+              queuedOffline: isNetworkFailure,
+            });
             await addNotification({
               title: 'Check-in failed',
               body: error.message || 'We could not check you in at office.',
@@ -292,6 +409,7 @@ export const Dashboard: React.FC = () => {
             });
             showToast({ title: 'Check-in failed', message: error.message, variant: 'error' });
           } else {
+            await clearRecovery('checkin');
             refresh();
             await sendDeviceNotification('🏢 Checked In at Office', 'Attendance marked. Have a productive day!');
             await addNotification({
@@ -312,12 +430,27 @@ export const Dashboard: React.FC = () => {
               {
                 text: 'Mark WFH',
                 onPress: async () => {
-                  const { error } = await clockIn('wfh', {
+                  const manualWfhPayload = {
                     latitude: location.coords.latitude,
                     longitude: location.coords.longitude,
                     address: 'Remote',
-                  }, 'manual');
+                  };
+                  const { error } = await clockIn('wfh', manualWfhPayload, 'manual');
                   if (error) {
+                    const isNetworkFailure = isLikelyNetworkError(error.message);
+                    if (isNetworkFailure) {
+                      await queueOfflineAttendanceAction('checkin', {
+                        location: manualWfhPayload,
+                        status: 'wfh',
+                        source: 'manual',
+                      });
+                    }
+                    await queueManualFailureRecovery({
+                      action: 'checkin',
+                      errorMessage: error.message,
+                      reason: isNetworkFailure ? 'network_error' : undefined,
+                      queuedOffline: isNetworkFailure,
+                    });
                     await addNotification({
                       title: 'WFH check-in failed',
                       body: error.message || 'Unable to mark Work From Home.',
@@ -325,6 +458,7 @@ export const Dashboard: React.FC = () => {
                     });
                     showToast({ title: 'WFH check-in failed', message: error.message, variant: 'error' });
                   } else {
+                    await clearRecovery('checkin');
                     refresh();
                     await sendDeviceNotification('🏠 Marked as WFH', 'You were away from the office. Attendance marked as Work From Home.');
                     await addNotification({
@@ -342,6 +476,11 @@ export const Dashboard: React.FC = () => {
 
       } else {
         // No company location set — allow checkin with warning
+        await queueAttendanceRecovery({
+          action: 'checkin',
+          source: 'manual',
+          reason: 'office_location_missing',
+        });
         Alert.alert(
           'No Office Location Set',
           "You haven't set your office location yet. Check in as Work From Home?",
@@ -350,12 +489,27 @@ export const Dashboard: React.FC = () => {
             {
               text: 'Check In as WFH',
               onPress: async () => {
-                const { error } = await clockIn('wfh', {
+                const manualWfhNoOfficePayload = {
                   latitude: location.coords.latitude,
                   longitude: location.coords.longitude,
                   address: 'Remote (No Office Set)',
-                });
+                };
+                const { error } = await clockIn('wfh', manualWfhNoOfficePayload);
                 if (error) {
+                  const isNetworkFailure = isLikelyNetworkError(error.message);
+                  if (isNetworkFailure) {
+                    await queueOfflineAttendanceAction('checkin', {
+                      location: manualWfhNoOfficePayload,
+                      status: 'wfh',
+                      source: 'manual',
+                    });
+                  }
+                  await queueManualFailureRecovery({
+                    action: 'checkin',
+                    errorMessage: error.message,
+                    reason: isNetworkFailure ? 'network_error' : 'office_location_missing',
+                    queuedOffline: isNetworkFailure,
+                  });
                   await addNotification({
                     title: 'WFH check-in failed',
                     body: error.message || 'Unable to check in right now.',
@@ -363,6 +517,7 @@ export const Dashboard: React.FC = () => {
                   });
                   showToast({ title: 'Check-in failed', message: error.message, variant: 'error' });
                 } else {
+                  await clearRecovery('checkin');
                   refresh();
                   await addNotification({
                     title: 'Checked in as Work From Home',
@@ -376,6 +531,11 @@ export const Dashboard: React.FC = () => {
         );
       }
     } catch (error) {
+      await queueManualFailureRecovery({
+        action: 'checkin',
+        reason: 'location_unavailable',
+        errorMessage: error instanceof Error ? error.message : 'Could not verify your location while checking attendance.',
+      });
       await addNotification({
         title: 'Location verification failed',
         body: 'Could not verify your location while checking attendance.',
@@ -796,6 +956,26 @@ export const Dashboard: React.FC = () => {
         onCancel={() => setShowFirstDayHint(false)}
       />
 
+      {pendingRecovery ? (
+        <AppDialog
+          visible={showRecoveryDialog}
+          icon={pendingRecovery.requiresSettings ? 'settings-outline' : 'warning-outline'}
+          iconColor={pendingRecovery.requiresSettings ? '#D97706' : '#EF4444'}
+          title={pendingRecovery.title}
+          message={pendingRecovery.body}
+          confirmLabel={pendingRecovery.requiresSettings ? 'Open Settings' : 'Continue'}
+          cancelLabel="Later"
+          onConfirm={() => {
+            if (pendingRecovery.requiresSettings) {
+              void openRecoverySettings();
+              return;
+            }
+            setShowRecoveryDialog(false);
+          }}
+          onCancel={() => setShowRecoveryDialog(false)}
+        />
+      ) : null}
+
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -825,6 +1005,27 @@ export const Dashboard: React.FC = () => {
           </View>
         </Animated.View>
 
+        {pendingRecovery ? (
+          <Animated.View
+            entering={FadeInDown.delay(130).duration(600).springify()}
+            style={styles.section}
+          >
+            <AttendanceRecoveryBanner
+              recovery={pendingRecovery}
+              onDismiss={() => {
+                void dismissRecoveryBanner();
+              }}
+              onOpenSettings={
+                pendingRecovery.requiresSettings
+                  ? () => {
+                      void openRecoverySettings();
+                    }
+                  : undefined
+              }
+            />
+          </Animated.View>
+        ) : null}
+
         {/* Swipe Action Section */}
         <Animated.View
           entering={FadeInDown.delay(150).duration(600).springify()}
@@ -837,6 +1038,7 @@ export const Dashboard: React.FC = () => {
                 icon={todayLog ? 'log-out-outline' : 'log-in-outline'}
                 color={todayLog ? theme.colors.warning : theme.colors.success}
                 onSwipeSuccess={handleSwipeAction}
+                testID="dashboard-attendance-slide"
                 disabled={
                   todayLog?.status === 'holiday' ||
                   todayLog?.status === 'leave' ||

@@ -61,6 +61,28 @@ const saveQueue = async (queue: QueuedAction[]): Promise<void> => {
     } catch { /* noop */ }
 };
 
+export const queueOfflineAttendanceAction = async (
+    action: QueuedAction['action'],
+    payload: QueuedAction['payload'],
+): Promise<void> => {
+    const queue = await loadQueue();
+    const payloadKey = JSON.stringify(payload);
+    const duplicate = queue.some(
+        (item) => item.action === action && JSON.stringify(item.payload) === payloadKey,
+    );
+
+    if (duplicate) return;
+
+    queue.push({
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+        action,
+        payload,
+        queuedAtMs: Date.now(),
+    });
+
+    await saveQueue(queue);
+};
+
 /**
  * Flush any queued check-in / check-out actions when network is available.
  * Call this on app foreground or after a successful API call.

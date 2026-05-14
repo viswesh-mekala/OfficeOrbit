@@ -99,6 +99,7 @@ export const Signin: React.FC = () => {
                                     onChangeText={setEmail}
                                     autoCapitalize="none"
                                     editable={!isSubmitting}
+                                    testID="signin-email-input"
                                 />
                             </View>
 
@@ -111,6 +112,7 @@ export const Signin: React.FC = () => {
                                     onChangeText={setPassword}
                                     secureTextEntry={!showPassword}
                                     editable={!isSubmitting}
+                                    testID="signin-password-input"
                                 />
                                 <TouchableOpacity
                                     onPress={() => setShowPassword(!showPassword)}
@@ -142,6 +144,7 @@ export const Signin: React.FC = () => {
                             onPress={handleAuth}
                             loading={isSubmitting}
                             style={{ marginBottom: 20 }}
+                            testID="signin-submit-button"
                         />
 
                         {/* Sign Up Link */}
@@ -166,6 +169,7 @@ export const Signin: React.FC = () => {
                             style={styles.googleButton}
                             onPress={handleGoogleSignIn}
                             disabled={isSubmitting}
+                            testID="signin-google-button"
                         >
                             <GoogleIcon size={20} />
                             <Text style={styles.googleButtonText}>Continue with Google</Text>
