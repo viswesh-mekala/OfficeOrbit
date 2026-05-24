@@ -17,6 +17,7 @@ export const BottomTabs: React.FC = () => {
     const tabs = [
         { name: 'Dashboard', icon: 'grid', route: '/dashboard' },
         { name: 'Attendance', icon: 'calendar', route: '/attendance' },
+        { name: 'Subscription', icon: 'diamond', route: '/subscription' }, // Sparkles/Premium Ribbon
         { name: 'Team', icon: 'people', route: '/team' },
         { name: 'Profile', icon: 'person', route: '/profile' },
     ];

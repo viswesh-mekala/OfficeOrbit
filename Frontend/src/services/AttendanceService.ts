@@ -1,5 +1,6 @@
 import { callApi } from './api/apiClient';
 import * as SecureStore from 'expo-secure-store';
+import { clearPendingAttendanceRecovery } from './AttendanceRecoveryService';
 
 /**
  * Attendance Service — all attendance operations through Edge Functions.
@@ -100,7 +101,12 @@ export const flushOfflineQueue = async (): Promise<void> => {
         try {
             const fn = item.action === 'checkin' ? 'check-in' : 'check-out';
             const { error } = await callApi(fn, item.payload);
-            if (error) remaining.push(item); // retry later
+            if (error) {
+                remaining.push(item); // retry later
+            } else {
+                // Clear pending recovery state upon successful flush
+                await clearPendingAttendanceRecovery(item.action);
+            }
         } catch {
             remaining.push(item);
         }

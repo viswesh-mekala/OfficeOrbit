@@ -21,13 +21,17 @@ import { MetricCard } from '../../components/common/MetricCard';
 import { AlertCard } from '../../components/common/AlertCard';
 import { WeeklyStatCard } from '../../components/common/WeeklyStatCard';
 import { useToast } from '../../components/common/Toast';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, router } from 'expo-router';
 
 import { useAuth } from '../../store/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import * as SecureStore from 'expo-secure-store';
 import { useAttendance } from '../../hooks/useAttendance';
+import useEntitlements from '../../hooks/useEntitlements';
+import { AdSlot } from '../../components/ads/AdSlot';
+// PaywallModal removed in favor of first-class subscription page
+import { AdInterstitial } from '../../components/ads/AdInterstitial';
 import { useAttendanceRecovery } from '../../hooks/useAttendanceRecovery';
 import { AppDialog } from '../../components/common/AppDialog';
 import { SlideAction } from '../../components/common/SlideAction';
@@ -58,7 +62,9 @@ import {
 export const Dashboard: React.FC = () => {
   const params = useLocalSearchParams<{ recovery?: string }>();
   const { user: authUser, profile, loading: authLoading } = useAuth();
+  const { planCode, capabilities } = useEntitlements();
   const { showToast } = useToast();
+  // paywallVisible state removed in favor of dedicated subscription route
   const {
     todayLog,
     weeklyLogs,
@@ -74,6 +80,7 @@ export const Dashboard: React.FC = () => {
   const [persistedStreakCount, setPersistedStreakCount] = useState(0);
   const [showFirstDayHint, setShowFirstDayHint] = useState(false);
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
+  const [interstitialVisible, setInterstitialVisible] = useState(false);
 
   // Fallback data
   const userName = profile?.username || authUser?.user_metadata?.name || 'User';
@@ -317,6 +324,9 @@ export const Dashboard: React.FC = () => {
             type: 'attendance',
           });
           showToast({ title: 'Checked out successfully 👋', message: 'Your attendance has been marked.', variant: 'success' });
+          if (capabilities.ads_enabled) {
+            setInterstitialVisible(true);
+          }
         }
         return;
       }
@@ -418,6 +428,9 @@ export const Dashboard: React.FC = () => {
               type: 'attendance',
             });
             showToast({ title: 'Welcome! 🏢', message: 'Checked in at office', variant: 'success' });
+            if (capabilities.ads_enabled) {
+              setInterstitialVisible(true);
+            }
           }
 
         } else {
@@ -467,6 +480,9 @@ export const Dashboard: React.FC = () => {
                       type: 'location',
                     });
                     showToast({ title: 'Marked as WFH', message: 'You were away from office location.', variant: 'success' });
+                    if (capabilities.ads_enabled) {
+                      setInterstitialVisible(true);
+                    }
                   }
                 },
               },
@@ -524,6 +540,10 @@ export const Dashboard: React.FC = () => {
                     body: 'No office location is set on your profile yet.',
                     type: 'system',
                   });
+                  showToast({ title: 'Check-in succeeded', message: 'Checked in as WFH (no office set).', variant: 'success' });
+                  if (capabilities.ads_enabled) {
+                    setInterstitialVisible(true);
+                  }
                 }
               },
             },
@@ -993,9 +1013,11 @@ export const Dashboard: React.FC = () => {
           entering={FadeInDown.delay(100).duration(600).springify()}
         >
           <View style={styles.greetingSection}>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={styles.greetingTitle}>{getGreeting()}</Text>
-              <Text style={styles.greetingName}>{userName}</Text>
+              <View style={styles.nameAvatarRow}>
+                <Text style={styles.greetingName} numberOfLines={1}>{userName}</Text>
+              </View>
             </View>
             <StatusPill
               status={statusText}
@@ -1174,6 +1196,9 @@ export const Dashboard: React.FC = () => {
             <AlertCard {...dashboardMetrics.alert} />
           </View>
         </Animated.View>
+
+        {/* Dynamic Ad Slot for Free Tier */}
+        <AdSlot onUpgradePress={() => router.replace('/subscription')} />
       </ScrollView>
 
       {/* ── Streak Modal (redesigned) ── */}
@@ -1287,6 +1312,11 @@ export const Dashboard: React.FC = () => {
           </Pressable>
         </Pressable>
       </Modal>
+      {/* PaywallModal modal removed */}
+      <AdInterstitial
+        visible={interstitialVisible}
+        onClose={() => setInterstitialVisible(false)}
+      />
     </View>
   );
 };
@@ -1398,6 +1428,54 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 2,
+  },
+
+  /* ── Header Avatar & Plan Badges ── */
+  nameAvatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 2,
+  },
+  headerAvatarOuter: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    padding: 2,
+    backgroundColor: '#FFF',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  avatarRingPro: {
+    borderColor: theme.colors.primary,
+    shadowColor: theme.colors.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+  },
+  avatarRingAuto: {
+    borderColor: '#FF5252',
+    shadowColor: '#FF5252',
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+  },
+  avatarGradient: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerAvatarText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FFF',
+    letterSpacing: 0.2,
   },
   streakTopRow: {
     flexDirection: 'row',

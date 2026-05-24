@@ -26,14 +26,35 @@ export interface UserProfile {
     updated_at: string;
 }
 
+export interface PlanCapabilities {
+    ads_enabled: boolean;
+    history_days_limit: number | null;
+    reminder_level: 'basic' | 'enhanced';
+    background_automation_level: 'none' | 'expo_background';
+    auto_killed_app_support: boolean;
+}
+
+export interface UserEntitlement {
+    id: string;
+    user_id: string;
+    plan_code: 'free' | 'pro_lifetime' | 'auto_lifetime';
+    status: 'active' | 'revoked' | 'refunded' | 'grace';
+    provider: 'razorpay' | 'play' | 'apple' | 'manual';
+    started_at: string;
+    is_lifetime: boolean;
+    capabilities: PlanCapabilities;
+}
+
 // ── Context State ──
 
 export interface AuthContextType {
     user: User | null;
     session: Session | null;
     profile: UserProfile | null;
+    entitlement: UserEntitlement | null;
     loading: boolean;
     profileLoading: boolean;
+    entitlementLoading: boolean;
     isProfileComplete: boolean;
     signInWithEmail: (email: string, password: string) => Promise<{ error: Error | null }>;
     signUpWithEmail: (email: string, password: string, username: string) => Promise<{ 
@@ -46,5 +67,6 @@ export interface AuthContextType {
     resendOtp: (email: string) => Promise<{ error: Error | null }>;
     updateProfile: (data: Partial<UserProfile>) => Promise<{ error: Error | null }>;
     refreshProfile: () => Promise<void>;
+    refreshEntitlements: () => Promise<void>;
     signOut: () => Promise<void>;
 }

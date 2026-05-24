@@ -33,7 +33,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import { getTodayAttendance, getWeeklyAttendance, AttendanceLog } from '../services/AttendanceService';
+import { getTodayAttendance, getWeeklyAttendance, AttendanceLog, flushOfflineQueue } from '../services/AttendanceService';
 import { useAuth } from '../store/AuthContext';
 import { setActiveUserIdForStreakStorage } from '../utils/wfoStreak';
 import { supabase } from '../services/api/supabaseClient';
@@ -96,6 +96,9 @@ export const useAttendance = () => {
         await setActiveUserIdForStreakStorage(user.id);
 
         try {
+            // First flush any offline queued items to guarantee UI updates reflect recent actions
+            await flushOfflineQueue();
+
             // Both requests fire at the same time — never sequential
             const [{ data: todayData }, { data: weeklyData }] = await Promise.all([
                 getTodayAttendance(),

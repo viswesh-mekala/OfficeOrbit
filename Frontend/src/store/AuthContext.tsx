@@ -4,11 +4,12 @@ import { Session, User } from '@supabase/supabase-js';
 
 
 // Types
-import { UserProfile, AuthContextType } from '../types/auth.types';
+import { UserProfile, UserEntitlement, AuthContextType } from '../types/auth.types';
 
 // Services (all DB calls are delegated here)
 import * as authService from '../services/authService';
 import { fetchUserProfile, updateUserProfile, checkProfileComplete } from '../services/profileService';
+import * as entitlementsService from '../services/billing/EntitlementsService';
 
 /**
  * AuthContext — pure state management layer.
@@ -34,8 +35,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const [user, setUser] = useState<User | null>(null);
     const [session, setSession] = useState<Session | null>(null);
     const [profile, setProfile] = useState<UserProfile | null>(null);
+    const [entitlement, setEntitlement] = useState<UserEntitlement | null>(null);
     const [loading, setLoading] = useState(true);
     const [profileLoading, setProfileLoading] = useState(false);
+    const [entitlementLoading, setEntitlementLoading] = useState(false);
 
     const isProfileComplete = checkProfileComplete(profile);
 
@@ -45,6 +48,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUser(null);
         setSession(null);
         setProfile(null);
+        setEntitlement(null);
+        await entitlementsService.clearCachedEntitlement();
     };
 
     // ── Fetch profile (delegates to service, updates state) ──
@@ -69,10 +74,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
     };
 
+    // ── Fetch fresh entitlements ──
+    const refreshEntitlements = async () => {
+        if (!user?.id) return;
+        setEntitlementLoading(true);
+        try {
+            const { data } = await entitlementsService.fetchUserEntitlement();
+            if (data) {
+                setEntitlement(data);
+            }
+        } finally {
+            setEntitlementLoading(false);
+        }
+    };
+
+    // Trigger background entitlements fetch when user loads
+    useEffect(() => {
+        if (user?.id) {
+            void refreshEntitlements();
+        }
+    }, [user?.id]);
+
     // ── Initialize session on mount ──
     useEffect(() => {
         const initSession = async () => {
             try {
+                // Try to load cached entitlement first for instant UI response
+                const cachedEnt = await entitlementsService.getCachedEntitlement();
+                if (cachedEnt) {
+                    setEntitlement(cachedEnt);
+                }
+
                 const { data: { session } } = await authService.getSession();
 
                 if (session) {
@@ -103,6 +135,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 void fetchProfile(session.user.id); // void: intentionally unawaited in sync callback
             } else {
                 setProfile(null);
+                setEntitlement(null);
+                void entitlementsService.clearCachedEntitlement();
             }
             setLoading(false);
         });
@@ -144,8 +178,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const signOut = async () => {
         await authService.signOutUser();
         setProfile(null);
+        setEntitlement(null);
         setUser(null);
         setSession(null);
+        await entitlementsService.clearCachedEntitlement();
         // Navigation handled by _layout.tsx auth effect (single source of truth)
     };
 
@@ -155,8 +191,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 user,
                 session,
                 profile,
+                entitlement,
                 loading,
                 profileLoading,
+                entitlementLoading,
                 isProfileComplete,
                 signInWithEmail,
                 signUpWithEmail,
@@ -165,6 +203,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 resendOtp,
                 updateProfile,
                 refreshProfile,
+                refreshEntitlements,
                 signOut,
             }}
         >

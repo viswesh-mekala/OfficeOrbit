@@ -13,6 +13,8 @@ import {
   ActivityIndicator,
   Dimensions,
   FlatList,
+  Linking,
+  AppState,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -53,6 +55,7 @@ const STEPS = [
   { key: 'personal', title: 'About You', icon: 'person-outline' },
   { key: 'company', title: 'Workplace', icon: 'business-outline' },
   { key: 'schedule', title: 'Schedule', icon: 'time-outline' },
+  { key: 'permissions', title: 'Device Setup', icon: 'shield-checkmark-outline' },
 ];
 
 // ------- Animated Orbit Logo -------
@@ -211,6 +214,82 @@ export const Onboarding: React.FC = () => {
   const { profile, updateProfile, user } = useAuth();
   const [step, setStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Permission states
+  const [fgStatus, setFgStatus] = useState<Location.PermissionStatus | null>(null);
+  const [bgStatus, setBgStatus] = useState<Location.PermissionStatus | null>(null);
+  const [isRequestingPermission, setIsRequestingPermission] = useState(false);
+
+  // Auto-check permissions on AppState transition to active (foreground)
+  useEffect(() => {
+    if (step !== 4) return;
+
+    let prevState = AppState.currentState;
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (prevState.match(/inactive|background/) && nextState === 'active') {
+        void checkPermissions();
+      }
+      prevState = nextState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [step]);
+
+  const checkPermissions = async () => {
+    try {
+      const { status: fg } = await Location.getForegroundPermissionsAsync();
+      const { status: bg } = await Location.getBackgroundPermissionsAsync();
+      setFgStatus(fg);
+      setBgStatus(bg);
+    } catch (err) {
+      console.warn('[Onboarding] Error checking permissions:', err);
+    }
+  };
+
+  const handleRequestPermissions = async () => {
+    if (isRequestingPermission) return;
+    setIsRequestingPermission(true);
+
+    try {
+      // 1. Request Foreground location access first
+      const { status: fg } = await Location.requestForegroundPermissionsAsync();
+      setFgStatus(fg);
+
+      if (fg !== 'granted') {
+        Alert.alert(
+          'Location Required',
+          'OfficeOrbit needs location access to verify office arrivals. Please enable it in device settings.',
+          [
+            { text: 'Not Now', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]
+        );
+        setIsRequestingPermission(false);
+        return;
+      }
+
+      // 2. Request Background location access second
+      const { status: bg } = await Location.requestBackgroundPermissionsAsync();
+      setBgStatus(bg);
+
+      if (bg !== 'granted') {
+        Alert.alert(
+          'Background Location Needed',
+          'To auto-detect office arrivals, select "Allow all the time" in device settings. Without this, you must clock in manually.',
+          [
+            { text: 'Not Now', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]
+        );
+      }
+    } catch (err) {
+      console.error('[Onboarding] Permission request error:', err);
+    } finally {
+      setIsRequestingPermission(false);
+    }
+  };
 
   // Keyboard tracking
   const scrollRef = useRef<ScrollView>(null);
@@ -433,16 +512,30 @@ export const Onboarding: React.FC = () => {
   };
 
   // ---- Navigation ----
-  const goNext = () => {
+  const goNext = async () => {
     if (step === 0) {
       // Welcome step — just go next
       setStep(1);
       return;
     }
     if (!validateStep()) return;
+
+    if (step === 3) {
+      // Transitioning to permissions step: check permission statuses first
+      await checkPermissions();
+      setStep(4);
+      return;
+    }
+
     if (step < STEPS.length - 1) {
       setStep(step + 1);
     } else {
+      // Permissions step: verify background permission before submitting profile
+      const isLocationGranted = fgStatus === 'granted' && bgStatus === 'granted';
+      if (!isLocationGranted) {
+        await handleRequestPermissions();
+        return;
+      }
       handleSubmit();
     }
   };
@@ -966,6 +1059,117 @@ export const Onboarding: React.FC = () => {
     </Animated.View>
   );
 
+  const renderPermissions = () => {
+    const isLocationGranted = fgStatus === 'granted' && bgStatus === 'granted';
+    
+    return (
+      <Animated.View
+        key='permissions'
+        entering={FadeInDown.duration(600).springify()}
+        style={styles.stepContent}
+      >
+        <View style={[styles.stepIconCircle, { backgroundColor: '#EDE7F6' }]}>
+          <Ionicons name='shield-checkmark-outline' size={28} color={theme.colors.primary} />
+        </View>
+        <Text style={styles.stepTitle}>Device Configuration</Text>
+        <Text style={styles.stepSubtitle}>
+          Enable background tracking and optimization settings to automate your attendance.
+        </Text>
+
+        <View style={styles.permissionsContainer}>
+          {/* Card 1: Location Access */}
+          <View style={[styles.permissionCard, isLocationGranted ? styles.permissionCardSuccess : null]}>
+            <View style={styles.permissionCardHeader}>
+              <View style={[styles.permissionIconWrap, { backgroundColor: isLocationGranted ? '#E8F5E9' : '#F3E5F5' }]}>
+                <Ionicons 
+                  name='location' 
+                  size={20} 
+                  color={isLocationGranted ? '#4CAF50' : theme.colors.primary} 
+                />
+              </View>
+              <View style={styles.permissionCardTextWrap}>
+                <Text style={styles.permissionCardTitle}>Location Access</Text>
+                <Text style={styles.permissionCardDesc}>
+                  Allows automatic check-in/out without opening the app.
+                </Text>
+              </View>
+              <View style={[styles.statusBadge, { backgroundColor: isLocationGranted ? '#E8F5E9' : '#FFF3E0' }]}>
+                <Text style={[styles.statusBadgeText, { color: isLocationGranted ? '#2E7D32' : '#E65100' }]}>
+                  {isLocationGranted ? 'Authorized' : 'Setup Required'}
+                </Text>
+              </View>
+            </View>
+
+            {!isLocationGranted && (
+              <Animated.View entering={FadeIn.duration(400)} style={styles.instructionBox}>
+                <Text style={styles.instructionHeader}>Step-by-Step Instructions:</Text>
+                <View style={styles.instructionRow}>
+                  <Text style={styles.instructionNumber}>1.</Text>
+                  <Text style={styles.instructionText}>
+                    Tap the main <Text style={{ fontWeight: '600' }}>Authorize Location Access</Text> button below.
+                  </Text>
+                </View>
+                <View style={styles.instructionRow}>
+                  <Text style={styles.instructionNumber}>2.</Text>
+                  <Text style={styles.instructionText}>
+                    Select <Text style={{ fontWeight: '600' }}>Allow all the time</Text> (Android) or <Text style={{ fontWeight: '600' }}>Always Allow</Text> (iOS) in the device settings prompt.
+                  </Text>
+                </View>
+                {fgStatus === 'granted' && bgStatus !== 'granted' && (
+                  <View style={styles.warningAlert}>
+                    <Ionicons name="warning-outline" size={14} color="#E65100" />
+                    <Text style={styles.warningAlertText}>
+                      Currently set to "While using app". You must select "Allow all the time" in your system settings for background geofencing to work.
+                    </Text>
+                  </View>
+                )}
+              </Animated.View>
+            )}
+          </View>
+
+          {/* Card 2: Battery Optimization (Android only) */}
+          {Platform.OS === 'android' && (
+            <View style={styles.permissionCard}>
+              <View style={styles.permissionCardHeader}>
+                <View style={[styles.permissionIconWrap, { backgroundColor: '#FFF3E0' }]}>
+                  <Ionicons name='battery-charging-outline' size={20} color='#FF9800' />
+                </View>
+                <View style={styles.permissionCardTextWrap}>
+                  <Text style={styles.permissionCardTitle}>Disable Battery Restrictions</Text>
+                  <Text style={styles.permissionCardDesc}>
+                    Prevents Android from putting geofencing to sleep when your phone is in your pocket.
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  style={styles.batteryConfigBtn}
+                  onPress={() => Linking.openSettings()}
+                >
+                  <Text style={styles.batteryConfigBtnText}>Configure</Text>
+                </TouchableOpacity>
+              </View>
+              
+              <View style={styles.instructionBox}>
+                <Text style={styles.instructionHeader}>How to disable restrictions:</Text>
+                <View style={styles.instructionRow}>
+                  <Text style={styles.instructionNumber}>•</Text>
+                  <Text style={styles.instructionText}>
+                    Tap <Text style={{ fontWeight: '600' }}>Configure</Text> to open App Settings.
+                  </Text>
+                </View>
+                <View style={styles.instructionRow}>
+                  <Text style={styles.instructionNumber}>•</Text>
+                  <Text style={styles.instructionText}>
+                    Select <Text style={{ fontWeight: '600' }}>Battery</Text> ➜ Set to <Text style={{ fontWeight: '600' }}>Unrestricted</Text> (or disable optimization).
+                  </Text>
+                </View>
+              </View>
+            </View>
+          )}
+        </View>
+      </Animated.View>
+    );
+  };
+
   const renderStep = () => {
     switch (step) {
       case 0:
@@ -976,6 +1180,8 @@ export const Onboarding: React.FC = () => {
         return renderCompany();
       case 3:
         return renderSchedule();
+      case 4:
+        return renderPermissions();
       default:
         return null;
     }
@@ -1040,7 +1246,7 @@ export const Onboarding: React.FC = () => {
                 <Button
                   title={
                     step === STEPS.length - 1
-                      ? 'Launch into Orbit 🚀'
+                      ? (fgStatus === 'granted' && bgStatus === 'granted' ? 'Launch into Orbit 🚀' : 'Authorize Location Access')
                       : 'Continue'
                   }
                   onPress={goNext}
@@ -1537,4 +1743,117 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   footerText: { fontSize: 11, color: '#BBB' },
+
+  // Permissions & Device Setup Step
+  permissionsContainer: {
+    gap: 16,
+    marginTop: 12,
+  },
+  permissionCard: {
+    backgroundColor: '#FAFAFF',
+    borderWidth: 1,
+    borderColor: '#E8E5FC',
+    borderRadius: 18,
+    padding: 16,
+    gap: 12,
+  },
+  permissionCardSuccess: {
+    backgroundColor: '#F4FBF7',
+    borderColor: '#C8E6C9',
+  },
+  permissionCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  permissionIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  permissionCardTextWrap: {
+    flex: 1,
+  },
+  permissionCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  permissionCardDesc: {
+    fontSize: 11,
+    color: '#8A8FA3',
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  instructionBox: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#EFEFEF',
+    gap: 8,
+  },
+  instructionHeader: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#4B5563',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  instructionRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  instructionNumber: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: theme.colors.primary,
+  },
+  instructionText: {
+    fontSize: 12,
+    color: '#4B5563',
+    lineHeight: 16,
+    flex: 1,
+  },
+  warningAlert: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF3E0',
+    borderWidth: 1,
+    borderColor: '#FFE0B2',
+    borderRadius: 8,
+    padding: 8,
+    gap: 6,
+    alignItems: 'flex-start',
+    marginTop: 4,
+  },
+  warningAlertText: {
+    fontSize: 10,
+    color: '#E65100',
+    lineHeight: 14,
+    flex: 1,
+    fontWeight: '500',
+  },
+  batteryConfigBtn: {
+    backgroundColor: '#FFE0B2',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  batteryConfigBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#E65100',
+  },
 });
