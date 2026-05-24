@@ -23,6 +23,11 @@ import {
   updateAttendanceDay,
 } from '../../services/AttendanceService';
 import { useRouter } from 'expo-router';
+import useEntitlements from '../../hooks/useEntitlements';
+import { PaywallModal } from '../../components/billing/PaywallModal';
+import { AdSlot } from '../../components/ads/AdSlot';
+import { AdInterstitial } from '../../components/ads/AdInterstitial';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   isCalendarManagedDay,
   liveDurationMinutes,
@@ -95,6 +100,7 @@ const STATUS_THEME: Record<
 export const Attendance: React.FC = () => {
   const router = useRouter();
   const { showToast } = useToast();
+  const { capabilities } = useEntitlements();
   // Current date for default state
   const today = new Date();
   const todayString = formatLocalDate(today);
@@ -107,6 +113,18 @@ export const Attendance: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [updatingDay, setUpdatingDay] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [paywallVisible, setPaywallVisible] = useState(false);
+  const [interstitialVisible, setInterstitialVisible] = useState(false);
+
+  const isOlderThan30Days = useCallback((dateStr: string): boolean => {
+    const todayZero = new Date();
+    todayZero.setHours(0, 0, 0, 0);
+    const checkDate = new Date(dateStr);
+    checkDate.setHours(0, 0, 0, 0);
+    const diffTime = todayZero.getTime() - checkDate.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 30;
+  }, []);
 
   // Fetch real attendance data from API
   const fetchAttendance = useCallback(async () => {
@@ -306,6 +324,9 @@ export const Attendance: React.FC = () => {
       }
       await fetchAttendance();
       showToast({ title: 'Status updated', message: 'Day status saved successfully.', variant: 'success' });
+      if (capabilities.ads_enabled) {
+        setInterstitialVisible(true);
+      }
     } catch {
       showToast({
         title: 'Update failed',
@@ -428,6 +449,9 @@ export const Attendance: React.FC = () => {
           </View>
         </View>
 
+        {/* Dynamic Ad Slot for Free Tier */}
+        <AdSlot onUpgradePress={() => setPaywallVisible(true)} />
+
         {/* Summary Card */}
         <Animated.View
           entering={FadeInUp.duration(600).delay(200)}
@@ -488,53 +512,77 @@ export const Attendance: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {/* Timeline */}
-          <View style={styles.timelineContainer}>
-            {/* Vertical Line */}
-            <View style={styles.timelineLine} />
-
-            {/* Arrival */}
-            <View style={styles.timelineItem}>
-              <View
-                style={[styles.iconContainer, { backgroundColor: '#EEF2FF' }]}
+          {/* Timeline / Locked History Gate */}
+          {capabilities.history_days_limit === 30 && isOlderThan30Days(selectedDate) ? (
+            <View style={styles.lockedHistoryContainer}>
+              <LinearGradient
+                colors={['rgba(255, 255, 255, 0.96)', 'rgba(240, 244, 255, 0.99)']}
+                style={styles.lockedHistoryBlur}
               >
-                <Ionicons
-                  name="log-in-outline"
-                  size={20}
-                  color={theme.colors.primary}
-                />
-              </View>
-              <View style={styles.timelineContent}>
-                <Text style={styles.timelineLabel}>Arrival</Text>
-                <Text style={styles.timelineLocation}>
-                  <Ionicons name="location-sharp" size={12} color="#999" />{' '}
-                  {selectedLog?.location_check_in?.address || 'NULL'}
+                <View style={styles.lockedIconWrapper}>
+                  <Ionicons name="lock-closed" size={22} color="#D97706" />
+                </View>
+                <Text style={styles.lockedTitle}>History Bounded (30 Days)</Text>
+                <Text style={styles.lockedDesc}>
+                  Upgrade to Orbit Pro to unlock your full historical logs and detailed Timeline.
+                </Text>
+                <TouchableOpacity 
+                  onPress={() => setPaywallVisible(true)}
+                  style={styles.lockedCtaButton}
+                >
+                  <Text style={styles.lockedCtaText}>Unlock Full History</Text>
+                  <Ionicons name="arrow-forward" size={12} color="#FFF" />
+                </TouchableOpacity>
+              </LinearGradient>
+            </View>
+          ) : (
+            <View style={styles.timelineContainer}>
+              {/* Vertical Line */}
+              <View style={styles.timelineLine} />
+
+              {/* Arrival */}
+              <View style={styles.timelineItem}>
+                <View
+                  style={[styles.iconContainer, { backgroundColor: '#EEF2FF' }]}
+                >
+                  <Ionicons
+                    name="log-in-outline"
+                    size={20}
+                    color={theme.colors.primary}
+                  />
+                </View>
+                <View style={styles.timelineContent}>
+                  <Text style={styles.timelineLabel}>Arrival</Text>
+                  <Text style={styles.timelineLocation}>
+                    <Ionicons name="location-sharp" size={12} color="#999" />{' '}
+                    {selectedLog?.location_check_in?.address || 'NULL'}
+                  </Text>
+                </View>
+                <Text style={styles.timelineTime}>
+                  {formatLogTime(selectedLog?.check_in ?? null)}
                 </Text>
               </View>
-              <Text style={styles.timelineTime}>
-                {formatLogTime(selectedLog?.check_in ?? null)}
-              </Text>
-            </View>
 
-            {/* Departure */}
-            <View style={[styles.timelineItem, { marginTop: 24 }]}>
-              <View
-                style={[styles.iconContainer, { backgroundColor: '#F5F5F5' }]}
-              >
-                <Ionicons name="log-out-outline" size={20} color="#666" />
-              </View>
-              <View style={styles.timelineContent}>
-                <Text style={styles.timelineLabel}>Departure</Text>
-                <Text style={styles.timelineLocation}>
-                  <Ionicons name="business" size={12} color="#999" />{' '}
-                  {selectedLog?.check_out ? 'Checked out' : 'NULL'}
+              {/* Departure */}
+              <View style={[styles.timelineItem, { marginTop: 24 }]}>
+                <View
+                  style={[styles.iconContainer, { backgroundColor: '#F5F5F5' }]}
+                >
+                  <Ionicons name="log-out-outline" size={20} color="#666" />
+                </View>
+                <View style={styles.timelineContent}>
+                  <Text style={styles.timelineLabel}>Departure</Text>
+                  <Text style={styles.timelineLocation}>
+                    <Ionicons name="business" size={12} color="#999" />{' '}
+                    {selectedLog?.check_out ? 'Checked out' : 'NULL'}
+                  </Text>
+                </View>
+                <Text style={styles.timelineTime}>
+                  {formatLogTime(selectedLog?.check_out ?? null)}
                 </Text>
               </View>
-              <Text style={styles.timelineTime}>
-                {formatLogTime(selectedLog?.check_out ?? null)}
-              </Text>
             </View>
-          </View>
+          )}
         </Animated.View>
       </ScrollView>
 
@@ -611,6 +659,15 @@ export const Attendance: React.FC = () => {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      <PaywallModal
+        visible={paywallVisible}
+        onClose={() => setPaywallVisible(false)}
+      />
+      <AdInterstitial
+        visible={interstitialVisible}
+        onClose={() => setInterstitialVisible(false)}
+      />
     </View>
   );
 };
@@ -848,5 +905,63 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6B7280',
     lineHeight: 16,
+  },
+
+  /* ── Locked History Blur Style ── */
+  lockedHistoryContainer: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: '#FEF3C7',
+    marginTop: 10,
+    backgroundColor: '#FFFBEB',
+  },
+  lockedHistoryBlur: {
+    padding: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lockedIconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FEF3C7',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  lockedTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#D97706',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+    textTransform: 'uppercase',
+  },
+  lockedDesc: {
+    fontSize: 12,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 12,
+    paddingHorizontal: 8,
+  },
+  lockedCtaButton: {
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    shadowColor: theme.colors.primary,
+    shadowOpacity: 0.15,
+    shadowRadius: 5,
+    elevation: 2,
+  },
+  lockedCtaText: {
+    color: '#FFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });

@@ -58,7 +58,14 @@
           "isAndroidBackgroundLocationEnabled": true
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-4273361282230701~1264967475",
+          "iosAppId": "ca-app-pub-4273361282230701~1264967475"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

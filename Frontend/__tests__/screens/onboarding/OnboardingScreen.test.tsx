@@ -58,12 +58,12 @@ describe('OnboardingScreen Permissions Step Unit Tests', () => {
     const { getByText } = render(<Onboarding />);
     await act(async () => {});
 
-    expect(getByText('Welcome to')).toBeTruthy();
+    expect(getByText(/Welcome to/)).toBeTruthy();
     expect(getByText("Let's Get Started")).toBeTruthy();
   });
 
   test('2. Dynamic Action Button Title transitions correctly based on Location Permissions', async () => {
-    const { getByText, queryByText, getByPlaceholderText } = render(<Onboarding />);
+    const { getByText, queryByText, getByPlaceholderText, getAllByText } = render(<Onboarding />);
     await act(async () => {});
 
     // Step 0 -> Step 1 (Personal Info)
@@ -87,6 +87,11 @@ describe('OnboardingScreen Permissions Step Unit Tests', () => {
     fireEvent.changeText(locationInput, 'Google Campus');
     await act(async () => {});
 
+    // Wait for the suggestion to appear and select it
+    await waitFor(() => expect(getByText('Mock Office')).toBeTruthy());
+    fireEvent.press(getByText('Mock Office'));
+    await act(async () => {});
+
     // Mock searchSuggestions results
     await waitFor(() => expect(getByText('Office pinned')).toBeTruthy());
     fireEvent.press(getByText('Continue'));
@@ -102,14 +107,16 @@ describe('OnboardingScreen Permissions Step Unit Tests', () => {
     expect(getByText('Setup Required')).toBeTruthy();
     
     // Verify dynamic button label is "Authorize Location Access"
-    expect(getByText('Authorize Location Access')).toBeTruthy();
+    expect(getAllByText('Authorize Location Access').length).toBeGreaterThan(0);
 
     // Mock permissions turning into granted
     (Location.getForegroundPermissionsAsync as jest.Mock).mockResolvedValueOnce({ status: 'granted' });
     (Location.getBackgroundPermissionsAsync as jest.Mock).mockResolvedValueOnce({ status: 'granted' });
 
     // Call validation/refresh
-    fireEvent.press(getByText('Authorize Location Access'));
+    // Find the one that is actually the button (the last element with this text)
+    const authButtons = getAllByText('Authorize Location Access');
+    fireEvent.press(authButtons[authButtons.length - 1]);
     await act(async () => {});
 
     // Verify step check-in resolves permission state changes

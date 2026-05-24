@@ -5,6 +5,8 @@
 -- =============================================================================
 
 -- Drop everything in reverse dependency order
+DROP TABLE IF EXISTS public.billing_events      CASCADE;
+DROP TABLE IF EXISTS public.user_entitlements   CASCADE;
 DROP TABLE IF EXISTS public.attendance_sessions CASCADE;
 DROP TABLE IF EXISTS public.attendance_records  CASCADE;
 DROP TABLE IF EXISTS public.team_members        CASCADE;
@@ -188,3 +190,120 @@ BEGIN
     RETURN QUERY SELECT v_total, v_status, v_first, v_last, v_count::INTEGER;
 END;
 $$;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 6. USER ENTITLEMENTS TABLE
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE public.user_entitlements (
+    id                 UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id            UUID        NOT NULL UNIQUE REFERENCES public.user_profiles(id) ON DELETE CASCADE,
+    plan_code          TEXT        NOT NULL CHECK (plan_code IN ('free', 'pro_lifetime', 'auto_lifetime')),
+    status             TEXT        NOT NULL CHECK (status IN ('active', 'revoked', 'refunded', 'grace')),
+    provider           TEXT        NOT NULL CHECK (provider IN ('razorpay', 'play', 'apple', 'manual')),
+    provider_order_id  TEXT,
+    provider_payment_id TEXT,
+    started_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at         TIMESTAMPTZ, -- NULL for lifetime plans
+    is_lifetime        BOOLEAN     NOT NULL DEFAULT FALSE,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Index for fast user entitlement checks
+CREATE INDEX idx_user_entitlements_user_id ON public.user_entitlements(user_id);
+
+-- Enable RLS
+ALTER TABLE public.user_entitlements ENABLE ROW LEVEL SECURITY;
+
+-- Select policy: users can view their own active entitlements
+CREATE POLICY "Users can view own entitlements" 
+    ON public.user_entitlements 
+    FOR SELECT 
+    USING (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 7. BILLING EVENTS AUDIT LOG
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE public.billing_events (
+    id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id           UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
+    provider          TEXT        NOT NULL,
+    event_type        TEXT        NOT NULL,
+    provider_event_id TEXT        UNIQUE,
+    payload           JSONB       NOT NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Enable RLS
+ALTER TABLE public.billing_events ENABLE ROW LEVEL SECURITY;
+
+-- Select policy: users can view their own billing history
+CREATE POLICY "Users can view own billing events" 
+    ON public.billing_events 
+    FOR SELECT 
+    USING (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 8. TRIGGERS FOR AUTO-PROVISIONING & DEFAULTS
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- Create trigger function to auto-provision default plans & test accounts
+CREATE OR REPLACE FUNCTION public.handle_new_user_entitlement()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_plan TEXT := 'free';
+BEGIN
+    -- Auto-provisioning by email prefix / suffix for test scenarios
+    IF NEW.email LIKE 'test.pro@%' OR NEW.email LIKE 'test.pro+%' OR NEW.email LIKE '%+testpro@%' THEN
+        v_plan := 'pro_lifetime';
+    ELSIF NEW.email LIKE 'test.auto@%' OR NEW.email LIKE 'test.auto+%' OR NEW.email LIKE '%+testauto@%' THEN
+        v_plan := 'auto_lifetime';
+    END IF;
+
+    INSERT INTO public.user_entitlements (
+        user_id,
+        plan_code,
+        status,
+        provider,
+        is_lifetime
+    )
+    VALUES (
+        NEW.id,
+        v_plan,
+        'active',
+        'manual',
+        TRUE
+    )
+    ON CONFLICT (user_id) DO NOTHING;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Bind the trigger to user_profiles insertion
+DROP TRIGGER IF EXISTS on_user_profile_created ON public.user_profiles;
+CREATE TRIGGER on_user_profile_created
+    AFTER INSERT ON public.user_profiles
+    FOR EACH ROW
+    EXECUTE FUNCTION public.handle_new_user_entitlement();
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 9. BACKWARD COMPATIBILITY / INITIALIZATION
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Auto-insert a 'free' tier entitlement for all pre-existing profiles in the system
+INSERT INTO public.user_entitlements (
+    user_id,
+    plan_code,
+    status,
+    provider,
+    is_lifetime
+)
+SELECT 
+    id, 
+    'free', 
+    'active', 
+    'manual', 
+    TRUE
+FROM public.user_profiles
+ON CONFLICT (user_id) DO NOTHING;

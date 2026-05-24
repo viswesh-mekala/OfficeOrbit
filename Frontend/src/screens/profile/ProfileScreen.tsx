@@ -25,6 +25,8 @@ import { Button } from '../../components/common/Button';
 import { useAuth } from '../../store/AuthContext';
 import { useToast } from '../../components/common/Toast';
 import { CompanyLocation } from '../../types/auth.types';
+import useEntitlements from '../../hooks/useEntitlements';
+import { PaywallModal } from '../../components/billing/PaywallModal';
 import { parseTimeToDate, formatTimeDisplay, formatTimeForDB, formatTime } from '../../utils/time';
 import {
     fetchPlaceDetails,
@@ -125,10 +127,12 @@ const OFFICE_TARGET_PERIODS = [
    ═══════════════════════════════════════════════════════ */
 export const Profile: React.FC = () => {
     const { profile, user, updateProfile, signOut } = useAuth();
+    const { planCode } = useEntitlements();
     const { showToast } = useToast();
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [showLogoutModal, setShowLogoutModal] = useState(false);
+    const [paywallVisible, setPaywallVisible] = useState(false);
     const scrollRef = useRef<ScrollView>(null);
     const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const searchSequenceRef = useRef(0);
@@ -499,6 +503,72 @@ export const Profile: React.FC = () => {
                     {/* ── VIEW MODE ── */}
                     {!isEditing ? (
                         <View style={styles.cardsContainer}>
+                            {/* ── Glowing Digital Member Card ── */}
+                            <Animated.View 
+                                entering={FadeInDown.delay(50).duration(500).springify()}
+                                style={[
+                                    styles.premiumMemberCard,
+                                    planCode === 'pro_lifetime' && styles.memberCardPro,
+                                    planCode === 'auto_lifetime' && styles.memberCardAuto
+                                ]}
+                            >
+                                <LinearGradient
+                                    colors={
+                                        planCode === 'auto_lifetime'
+                                            ? ['#251A1B', '#1D1213', '#2B191B']
+                                            : planCode === 'pro_lifetime'
+                                            ? ['#121B2D', '#0B111F', '#192842']
+                                            : ['#1A1D24', '#111318', '#252932']
+                                    }
+                                    style={styles.memberCardGradient}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 1 }}
+                                >
+                                    <View style={styles.cardHeaderRow}>
+                                        <View style={styles.cardBadge}>
+                                            <Ionicons 
+                                                name={planCode === 'auto_lifetime' ? 'rocket' : planCode === 'pro_lifetime' ? 'star' : 'planet'} 
+                                                size={14} 
+                                                color={planCode === 'auto_lifetime' ? '#FF5252' : planCode === 'pro_lifetime' ? '#7B6FFF' : '#4CAF50'} 
+                                            />
+                                            <Text style={[
+                                                styles.cardBadgeText,
+                                                { color: planCode === 'auto_lifetime' ? '#FF5252' : planCode === 'pro_lifetime' ? '#7B6FFF' : '#4CAF50' }
+                                            ]}>
+                                                {planCode === 'auto_lifetime' ? 'AUTO LIFETIME' : planCode === 'pro_lifetime' ? 'PRO LIFETIME' : 'SMART FREE'}
+                                            </Text>
+                                        </View>
+                                        <Text style={styles.cardBrand}>OfficeOrbit</Text>
+                                    </View>
+
+                                    <View style={styles.cardContent}>
+                                        <Text style={styles.cardName}>{profile.username.toUpperCase()}</Text>
+                                        <Text style={styles.cardPlanSub}>
+                                            {planCode === 'free' 
+                                                ? 'Basic Manual Tracking Account' 
+                                                : 'Lifetime Premium Entitlement'}
+                                        </Text>
+                                    </View>
+
+                                    <View style={styles.cardFooter}>
+                                        <Text style={styles.cardSerial}>ID: {profile.id.slice(0, 18).toUpperCase()}</Text>
+                                        {planCode === 'free' ? (
+                                            <TouchableOpacity 
+                                                onPress={() => setPaywallVisible(true)} 
+                                                style={styles.cardUpgradeBtn}
+                                            >
+                                                <Text style={styles.cardUpgradeText}>UPGRADE</Text>
+                                                <Ionicons name="arrow-forward" size={10} color="#000" />
+                                            </TouchableOpacity>
+                                        ) : (
+                                            <View style={styles.activePill}>
+                                                <Text style={styles.activePillText}>LIFETIME PASS</Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                </LinearGradient>
+                            </Animated.View>
+
                             <SectionCard title="Company" icon="business-outline" iconColor={theme.colors.primary} delay={100}>
                                 <InfoRow icon="briefcase-outline" label="Company" value={profile.company || 'Not set'} />
                                 <InfoRow icon="location-outline" label="Location" value={profile.company_location?.address || 'Not set'} />
@@ -521,6 +591,47 @@ export const Profile: React.FC = () => {
                             <SectionCard title="Office Days Target" icon="business-outline" iconColor={theme.colors.primary} delay={300}>
                                 <InfoRow icon="calendar-outline" label="Office Days" value={profile.office_days_target != null ? String(profile.office_days_target) : (profile.wfh_days != null ? String(profile.wfh_days) : '0')} />
                                 <InfoRow icon="repeat-outline" label="Period" value={(profile.office_target_period || profile.wfh_period) === 'month' ? 'Per Month' : 'Per Week'} />
+                            </SectionCard>
+
+                            <SectionCard title="Subscription Settings" icon="settings-outline" iconColor="#555" delay={350}>
+                                <TouchableOpacity 
+                                    onPress={() => {
+                                        if (planCode === 'free') {
+                                            setPaywallVisible(true);
+                                        } else {
+                                            Alert.alert(
+                                                'Premium Activated ✨', 
+                                                `Your account is provisioned with ${planCode === 'pro_lifetime' ? 'Pro Lifetime' : 'Auto Lifetime'} access.`
+                                            );
+                                        }
+                                    }}
+                                    style={styles.settingsRowClickable}
+                                >
+                                    <View style={styles.infoRowLeft}>
+                                        <View style={styles.infoRowIconBg}>
+                                            <Ionicons name="card-outline" size={14} color="#777" />
+                                        </View>
+                                        <Text style={styles.infoLabel}>Subscription Tier</Text>
+                                    </View>
+                                    <View style={styles.settingsBadgeRow}>
+                                        <View style={[
+                                            styles.settingsPlanBadge,
+                                            planCode === 'auto_lifetime' && styles.badgeAuto,
+                                            planCode === 'pro_lifetime' && styles.badgePro,
+                                        ]}>
+                                            <Text style={[
+                                                styles.settingsPlanBadgeText,
+                                                planCode === 'auto_lifetime' && styles.badgeTextAuto,
+                                                planCode === 'pro_lifetime' && styles.badgeTextPro,
+                                            ]}>
+                                                {planCode === 'auto_lifetime' ? 'Auto Lifetime 🚀' : planCode === 'pro_lifetime' ? 'Pro Lifetime 👑' : 'Free Plan'}
+                                            </Text>
+                                        </View>
+                                        {planCode === 'free' && (
+                                            <Ionicons name="chevron-forward" size={16} color="#BBB" />
+                                        )}
+                                    </View>
+                                </TouchableOpacity>
                             </SectionCard>
                         </View>
                     ) : (
@@ -825,6 +936,11 @@ export const Profile: React.FC = () => {
                 </TouchableOpacity>
             </TouchableOpacity>
         </Modal>
+
+        <PaywallModal
+            visible={paywallVisible}
+            onClose={() => setPaywallVisible(false)}
+        />
         </>
     );
 };
@@ -1371,5 +1487,162 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: '700',
         color: '#FFFFFF',
+    },
+
+    /* ── Glowing Digital Member Card ── */
+    premiumMemberCard: {
+        borderRadius: 24,
+        overflow: 'hidden',
+        shadowColor: '#000',
+        shadowOpacity: 0.15,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 8 },
+        elevation: 6,
+        marginBottom: 8,
+    },
+    memberCardPro: {
+        shadowColor: theme.colors.primary,
+        shadowOpacity: 0.25,
+        borderWidth: 1,
+        borderColor: 'rgba(123, 111, 255, 0.25)',
+    },
+    memberCardAuto: {
+        shadowColor: '#FF5252',
+        shadowOpacity: 0.25,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 82, 82, 0.25)',
+    },
+    memberCardGradient: {
+        padding: 20,
+        height: 175,
+        justifyContent: 'space-between',
+    },
+    cardHeaderRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    cardBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+        gap: 6,
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.06)',
+    },
+    cardBadgeText: {
+        fontSize: 10,
+        fontWeight: '800',
+        letterSpacing: 0.5,
+    },
+    cardBrand: {
+        fontSize: 14,
+        fontWeight: '800',
+        color: '#FFF',
+        letterSpacing: 0.8,
+        opacity: 0.85,
+    },
+    cardContent: {
+        marginTop: 6,
+    },
+    cardName: {
+        fontSize: 19,
+        fontWeight: '800',
+        color: '#FFF',
+        letterSpacing: 1.2,
+    },
+    cardPlanSub: {
+        fontSize: 11,
+        color: '#AAA',
+        marginTop: 3,
+        fontWeight: '500',
+        letterSpacing: 0.5,
+    },
+    cardFooter: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(255,255,255,0.05)',
+    },
+    cardSerial: {
+        fontSize: 10,
+        fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+        color: '#777',
+        letterSpacing: 0.5,
+    },
+    cardUpgradeBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFF',
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 8,
+        gap: 4,
+        shadowColor: '#FFF',
+        shadowOpacity: 0.15,
+        shadowRadius: 6,
+    },
+    cardUpgradeText: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: '#000',
+        letterSpacing: 0.5,
+    },
+    activePill: {
+        backgroundColor: 'rgba(255,255,255,0.1)',
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 6,
+    },
+    activePillText: {
+        fontSize: 9,
+        fontWeight: '800',
+        color: '#FFF',
+        letterSpacing: 0.5,
+    },
+
+    /* ── Settings Row ── */
+    settingsRowClickable: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+    },
+    settingsBadgeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    settingsPlanBadge: {
+        backgroundColor: 'rgba(0,0,0,0.05)',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 10,
+    },
+    settingsPlanBadgeText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#555',
+    },
+    badgeAuto: {
+        backgroundColor: 'rgba(255, 82, 82, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 82, 82, 0.15)',
+    },
+    badgePro: {
+        backgroundColor: 'rgba(123, 111, 255, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(123, 111, 255, 0.15)',
+    },
+    badgeTextAuto: {
+        color: '#FF5252',
+    },
+    badgeTextPro: {
+        color: '#7B6FFF',
     },
 });
