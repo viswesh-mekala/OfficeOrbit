@@ -71,18 +71,39 @@ Deno.serve(async (req: Request) => {
     } else {
       // Real transaction validation
       if (!razorpay_signature) {
-        return errorResponse('Missing payment signature');
-      }
+        // Fallback: Fetch order details directly from Razorpay to check if status is 'paid'
+        try {
+          const authString = btoa(`${keyId}:${keySecret}`);
+          const rzpResponse = await fetch(`https://api.razorpay.com/v1/orders/${razorpay_order_id}`, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Basic ${authString}`,
+            },
+          });
 
-      const isValid = await verifyRazorpaySignature(
-        razorpay_order_id,
-        razorpay_payment_id,
-        razorpay_signature,
-        keySecret
-      );
+          if (!rzpResponse.ok) {
+            return errorResponse(`Razorpay Order fetch failed: ${await rzpResponse.text()}`);
+          }
 
-      if (!isValid) {
-        return errorResponse('Invalid payment signature. Verification failed.');
+          const rzpOrder = await rzpResponse.json();
+          if (rzpOrder.status !== 'paid') {
+            return errorResponse(`Order payment is not completed. Current status: ${rzpOrder.status}`);
+          }
+          // If status is paid, we allow provisioning!
+        } catch (fetchErr: any) {
+          return errorResponse(`Error checking order status: ${fetchErr.message}`);
+        }
+      } else {
+        const isValid = await verifyRazorpaySignature(
+          razorpay_order_id,
+          razorpay_payment_id,
+          razorpay_signature,
+          keySecret
+        );
+
+        if (!isValid) {
+          return errorResponse('Invalid payment signature. Verification failed.');
+        }
       }
     }
 

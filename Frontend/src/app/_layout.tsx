@@ -171,7 +171,7 @@ function RootLayoutNav() {
     if (Platform.OS !== 'android') return;
 
     const currentRoute = (segments[0] as string) || 'index';
-    const tabRoutes = ['dashboard', 'attendance', 'profile', 'team'];
+    const tabRoutes = ['dashboard', 'attendance', 'subscription', 'profile', 'team'];
 
     if (!session || !tabRoutes.includes(currentRoute)) return;
 
@@ -217,6 +217,7 @@ function RootLayoutNav() {
                 <Stack.Screen name="onboarding"    options={{ headerShown: false, gestureEnabled: false }} />
                 <Stack.Screen name="dashboard"     options={{ headerShown: false, gestureEnabled: false }} />
                 <Stack.Screen name="attendance"    options={{ headerShown: false, gestureEnabled: false }} />
+                <Stack.Screen name="subscription"  options={{ headerShown: false, gestureEnabled: false }} />
                 <Stack.Screen name="profile"       options={{ headerShown: false, gestureEnabled: false }} />
                 <Stack.Screen name="team"          options={{ headerShown: false, gestureEnabled: false }} />
             </Stack>

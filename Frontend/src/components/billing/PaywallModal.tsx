@@ -24,6 +24,15 @@ interface PaywallModalProps {
   onClose: () => void;
 }
 
+const generateMockId = (prefix: string, length = 10): string => {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `${prefix}_${result}`;
+};
+
 export const PaywallModal: React.FC<PaywallModalProps> = ({ visible, onClose }) => {
   const { planCode, refreshEntitlements } = useEntitlements();
   const [loading, setLoading] = useState(false);
@@ -64,6 +73,28 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ visible, onClose }) 
     triggerHaptic(Haptics.NotificationFeedbackType.Success);
 
     try {
+      // In local development, bypass Razorpay SDK and run Sandbox mock flow directly
+      if (__DEV__) {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+
+        const mockOrderId = generateMockId('order_mock', 14);
+        const verifyRes = await verifySubscriptionPayment({
+          razorpay_order_id: mockOrderId,
+          razorpay_payment_id: generateMockId('pay_sandbox', 10),
+          plan_code: plan,
+        });
+
+        if (verifyRes.error || !verifyRes.data) {
+          throw new Error(verifyRes.error || 'Signature verification failed');
+        }
+
+        setPurchasedPlan(plan === 'pro_lifetime' ? 'Orbit Pro Lifetime' : 'Orbit Auto Lifetime');
+        setSuccessMode(true);
+        triggerHaptic(Haptics.NotificationFeedbackType.Success);
+        await refreshEntitlements();
+        return;
+      }
+
       // 1. Create order (automatically detects keys or runs in developer sandbox mode)
       const orderRes = await createSubscriptionOrder(plan);
       if (orderRes.error || !orderRes.data) {
@@ -81,7 +112,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ visible, onClose }) 
 
         const verifyRes = await verifySubscriptionPayment({
           razorpay_order_id: orderData.id,
-          razorpay_payment_id: `pay_sandbox_${crypto.randomUUID().replace(/-/g, '').slice(0, 10)}`,
+          razorpay_payment_id: generateMockId('pay_sandbox', 10),
           plan_code: plan,
         });
 
@@ -110,7 +141,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ visible, onClose }) 
   };
 
   const renderSuccessView = () => (
-    <LinearGradient colors={['#101217', '#1A1D24']} style={styles.successBg}>
+    <LinearGradient colors={['#F5F8FF', '#EBEFFF']} style={styles.successBg}>
       <View style={styles.successWrapper}>
         <View style={styles.successIconCircle}>
           <Ionicons name="sparkles" size={56} color="#FFD700" />
@@ -149,7 +180,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ visible, onClose }) 
       {successMode ? (
         renderSuccessView()
       ) : (
-        <LinearGradient colors={['#0F1115', '#161920']} style={styles.container}>
+        <LinearGradient colors={['#F5F8FF', '#EBEFFF']} style={styles.container}>
           {/* Close button */}
           <View style={styles.header}>
             <Text style={styles.headerTitle}>OfficeOrbit Premium</Text>
@@ -158,7 +189,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ visible, onClose }) 
               disabled={loading}
               style={styles.closeButton}
             >
-              <Ionicons name="close" size={24} color="#FFF" />
+              <Ionicons name="close" size={24} color={theme.colors.text.secondary} />
             </TouchableOpacity>
           </View>
 
@@ -171,7 +202,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ visible, onClose }) 
 
             {/* Plan 1: Free */}
             <View style={[styles.planCard, planCode === 'free' && styles.activeBorderFree]}>
-              <LinearGradient colors={['#172B24', '#101F1A']} style={styles.planGradient}>
+              <LinearGradient colors={['#FFFFFF', '#F8FAFC']} style={styles.planGradient}>
                 <View style={styles.planHeader}>
                   <View>
                     <Text style={styles.planName}>Smart Free</Text>
@@ -203,7 +234,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ visible, onClose }) 
 
             {/* Plan 2: Pro Lifetime */}
             <View style={[styles.planCard, planCode === 'pro_lifetime' && styles.activeBorderPro]}>
-              <LinearGradient colors={['#16233B', '#0F1A2D']} style={styles.planGradient}>
+              <LinearGradient colors={['#FFFFFF', '#F8FAFC']} style={styles.planGradient}>
                 <View style={styles.planHeader}>
                   <View>
                     <Text style={styles.planNamePro}>Pro Lifetime 👑</Text>
@@ -251,7 +282,7 @@ export const PaywallModal: React.FC<PaywallModalProps> = ({ visible, onClose }) 
 
             {/* Plan 3: Auto Lifetime */}
             <View style={[styles.planCard, planCode === 'auto_lifetime' && styles.activeBorderAuto]}>
-              <LinearGradient colors={['#2D1E20', '#201516']} style={styles.planGradient}>
+              <LinearGradient colors={['#FFFFFF', '#F8FAFC']} style={styles.planGradient}>
                 <View style={styles.planHeader}>
                   <View>
                     <Text style={styles.planNameAuto}>Auto Lifetime 🚀</Text>
@@ -320,17 +351,17 @@ const styles = StyleSheet.create({
     paddingTop: 50,
     paddingBottom: theme.spacing.m,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
+    borderBottomColor: 'rgba(91, 77, 255, 0.08)',
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#FFF',
+    color: theme.colors.primary, // Sleek brand purple highlight
   },
   closeButton: {
     padding: 6,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    backgroundColor: 'rgba(91, 77, 255, 0.05)',
   },
   scrollContent: {
     padding: theme.spacing.m,
@@ -343,13 +374,13 @@ const styles = StyleSheet.create({
   pitchText: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#FFF',
+    color: theme.colors.primary, // Premium purple pitch header
     textAlign: 'center',
     marginBottom: theme.spacing.xs,
   },
   pitchSub: {
     fontSize: 14,
-    color: '#AAA',
+    color: '#64748B',
     textAlign: 'center',
     paddingHorizontal: theme.spacing.m,
     lineHeight: 20,
@@ -358,28 +389,37 @@ const styles = StyleSheet.create({
     borderRadius: theme.borderRadius.m,
     overflow: 'hidden',
     marginBottom: theme.spacing.m,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 2,
   },
   activeBorderFree: {
     borderColor: '#4CAF50',
     shadowColor: '#4CAF50',
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 3,
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
   activeBorderPro: {
     borderColor: theme.colors.primary,
     shadowColor: theme.colors.primary,
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.18,
     shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 4,
   },
   activeBorderAuto: {
     borderColor: '#FF5252',
     shadowColor: '#FF5252',
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.18,
     shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
     elevation: 4,
   },
   planGradient: {
@@ -399,7 +439,7 @@ const styles = StyleSheet.create({
   planNamePro: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#7B6FFF',
+    color: theme.colors.primary,
   },
   planNameAuto: {
     fontSize: 20,
@@ -408,13 +448,13 @@ const styles = StyleSheet.create({
   },
   planSub: {
     fontSize: 12,
-    color: '#AAA',
+    color: '#64748B',
     marginTop: 2,
   },
   planPrice: {
     fontSize: 28,
-    fontWeight: '700',
-    color: '#FFF',
+    fontWeight: '800',
+    color: '#1E293B',
   },
   features: {
     marginBottom: theme.spacing.m,
@@ -425,9 +465,10 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   featureText: {
-    color: '#EEE',
+    color: '#334155',
     fontSize: 13,
     marginLeft: 8,
+    fontWeight: '500',
   },
   proButton: {
     backgroundColor: theme.colors.primary,
@@ -455,14 +496,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   disabledButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: '#F1F5F9',
+    borderColor: '#E2E8F0',
     borderWidth: 1,
     shadowOpacity: 0,
     elevation: 0,
   },
   disabledButtonText: {
-    color: 'rgba(255, 255, 255, 0.25)',
+    color: '#94A3B8',
   },
   activeLabel: {
     alignItems: 'center',
@@ -476,7 +517,7 @@ const styles = StyleSheet.create({
   },
   disclaimer: {
     fontSize: 11,
-    color: '#666',
+    color: '#64748B',
     textAlign: 'center',
     lineHeight: 16,
     marginTop: theme.spacing.s,
@@ -493,61 +534,66 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: theme.spacing.xl,
     borderRadius: theme.borderRadius.l,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    shadowColor: '#5B4DFF',
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 5,
   },
   successIconCircle: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: 'rgba(255,215,0,0.1)',
+    backgroundColor: 'rgba(255, 215, 0, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: theme.spacing.m,
-    borderWidth: 1,
-    borderColor: 'rgba(255,215,0,0.2)',
+    borderWidth: 1.5,
+    borderColor: '#FFD700',
   },
   successTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#FFF',
-    letterSpacing: 1.5,
+    color: '#1E293B',
+    letterSpacing: 1.2,
     marginBottom: theme.spacing.s,
   },
   successSubtitle: {
     fontSize: 14,
-    color: '#DDD',
+    color: '#4B5563',
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: theme.spacing.m,
   },
   highlightText: {
-    fontWeight: '700',
-    color: '#FFD700',
+    fontWeight: '800',
+    color: theme.colors.primary,
   },
   successDesc: {
     fontSize: 12,
-    color: '#999',
+    color: '#64748B',
     textAlign: 'center',
     lineHeight: 18,
     marginBottom: theme.spacing.xl,
     paddingHorizontal: theme.spacing.s,
   },
   successButton: {
-    backgroundColor: '#FFF',
+    backgroundColor: theme.colors.primary,
     paddingHorizontal: 28,
     paddingVertical: 14,
     borderRadius: theme.borderRadius.m,
-    shadowColor: '#FFF',
+    shadowColor: theme.colors.primary,
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.25,
     shadowRadius: 10,
     elevation: 3,
   },
   successButtonText: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#000',
+    color: '#FFFFFF',
   },
 });

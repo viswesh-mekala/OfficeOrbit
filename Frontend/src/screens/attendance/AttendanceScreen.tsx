@@ -24,7 +24,7 @@ import {
 } from '../../services/AttendanceService';
 import { useRouter } from 'expo-router';
 import useEntitlements from '../../hooks/useEntitlements';
-import { PaywallModal } from '../../components/billing/PaywallModal';
+// PaywallModal removed in favor of first-class subscription page
 import { AdSlot } from '../../components/ads/AdSlot';
 import { AdInterstitial } from '../../components/ads/AdInterstitial';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -113,7 +113,7 @@ export const Attendance: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [updatingDay, setUpdatingDay] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [paywallVisible, setPaywallVisible] = useState(false);
+  // paywallVisible state removed in favor of dedicated subscription route
   const [interstitialVisible, setInterstitialVisible] = useState(false);
 
   const isOlderThan30Days = useCallback((dateStr: string): boolean => {
@@ -449,9 +449,6 @@ export const Attendance: React.FC = () => {
           </View>
         </View>
 
-        {/* Dynamic Ad Slot for Free Tier */}
-        <AdSlot onUpgradePress={() => setPaywallVisible(true)} />
-
         {/* Summary Card */}
         <Animated.View
           entering={FadeInUp.duration(600).delay(200)}
@@ -527,7 +524,7 @@ export const Attendance: React.FC = () => {
                   Upgrade to Orbit Pro to unlock your full historical logs and detailed Timeline.
                 </Text>
                 <TouchableOpacity 
-                  onPress={() => setPaywallVisible(true)}
+                  onPress={() => router.replace('/subscription')}
                   style={styles.lockedCtaButton}
                 >
                   <Text style={styles.lockedCtaText}>Unlock Full History</Text>
@@ -584,6 +581,9 @@ export const Attendance: React.FC = () => {
             </View>
           )}
         </Animated.View>
+
+        {/* Dynamic Ad Slot for Free Tier */}
+        <AdSlot screen="calendar" onUpgradePress={() => router.replace('/subscription')} />
       </ScrollView>
 
       <Modal
@@ -660,10 +660,7 @@ export const Attendance: React.FC = () => {
         </TouchableOpacity>
       </Modal>
 
-      <PaywallModal
-        visible={paywallVisible}
-        onClose={() => setPaywallVisible(false)}
-      />
+      {/* PaywallModal modal removed */}
       <AdInterstitial
         visible={interstitialVisible}
         onClose={() => setInterstitialVisible(false)}

@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, Animated, Platform } from 'react-native';
+import {
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  Animated,
+  Platform,
+  Dimensions,
+} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import useEntitlements from '../../hooks/useEntitlements';
@@ -22,12 +30,12 @@ interface AdSlotProps {
 
 const DASHBOARD_AD_UNIT = Platform.select({
   android: 'ca-app-pub-4273361282230701/7363471966',
-  ios: 'ca-app-pub-4273361282230701/7363471966', // Fallback or iOS unit ID if generated
+  ios: 'ca-app-pub-4273361282230701/7363471966',
 });
 
 const CALENDAR_AD_UNIT = Platform.select({
   android: 'ca-app-pub-4273361282230701/7060219639',
-  ios: 'ca-app-pub-4273361282230701/7060219639', // Fallback or iOS unit ID if generated
+  ios: 'ca-app-pub-4273361282230701/7060219639',
 });
 
 const MOCK_ADS = [
@@ -48,12 +56,14 @@ const MOCK_ADS = [
   },
 ];
 
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
 export const AdSlot: React.FC<AdSlotProps> = ({ onUpgradePress, screen = 'dashboard' }) => {
   const { capabilities } = useEntitlements();
   const [adIndex, setAdIndex] = useState(0);
   const [fadeAnim] = useState(new Animated.Value(1));
 
-  // Rotate ads every 15 seconds to make the interface feel alive
+  // Rotate ads every 15 seconds with a smooth fade transition
   useEffect(() => {
     if (!capabilities.ads_enabled) return;
 
@@ -75,21 +85,28 @@ export const AdSlot: React.FC<AdSlotProps> = ({ onUpgradePress, screen = 'dashbo
     return () => clearInterval(interval);
   }, [capabilities.ads_enabled]);
 
-  // If ads are disabled, collapse entirely and render nothing
+  // ── Gate 1: Pro / Auto users — return null, zero pixels, zero padding ──
   if (!capabilities.ads_enabled) {
     return null;
   }
 
-  // Render direct production Google AdMob ad if BannerAd exists and NOT in local __DEV__ mode
-  if (BannerAd && BannerAdSize && !__DEV__) {
-    const unitId = screen === 'calendar' ? CALENDAR_AD_UNIT : DASHBOARD_AD_UNIT;
+  // ── Gate 2: Dev Custom Client or Production Release — render real Google AdMob banner ──
+  if (BannerAd && BannerAdSize) {
+    const isTest = __DEV__;
+    const unitId = isTest
+      ? Platform.select({
+          android: 'ca-app-pub-3940256099942544/6300978111', // Google Test Banner ID (Android)
+          ios: 'ca-app-pub-3940256099942544/2934735716',     // Google Test Banner ID (iOS)
+        })
+      : (screen === 'calendar' ? CALENDAR_AD_UNIT : DASHBOARD_AD_UNIT);
+
     if (unitId) {
       return (
         <View style={styles.outerContainer}>
           <View style={{ alignItems: 'center', justifyContent: 'center', width: '100%' }}>
             <BannerAd
               unitId={unitId}
-              size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+              size={BannerAdSize.BANNER}
             />
           </View>
         </View>
@@ -99,8 +116,13 @@ export const AdSlot: React.FC<AdSlotProps> = ({ onUpgradePress, screen = 'dashbo
 
   const currentAd = MOCK_ADS[adIndex];
 
+  // Dashboard's scrollContent already has padding:16 on all sides.
+  // Calendar's ScrollView has no horizontal padding — so we apply it here.
+  const isCalendar = screen === 'calendar';
+
+  // ── Dev / Preview: Rich full card — same layout on both Dashboard and Calendar ──
   return (
-    <View style={styles.outerContainer}>
+    <View style={[styles.outerContainer, isCalendar && styles.outerContainerCalendar]}>
       <Animated.View style={[styles.container, { opacity: fadeAnim }]}>
         <LinearGradient
           colors={['rgba(91, 77, 255, 0.08)', 'rgba(123, 111, 255, 0.03)']}
@@ -126,7 +148,9 @@ export const AdSlot: React.FC<AdSlotProps> = ({ onUpgradePress, screen = 'dashbo
 
           {/* Action Footer */}
           <View style={styles.footerRow}>
-            <Text style={styles.smallPromoText}>Support OfficeOrbit • Zero Ads with Pro</Text>
+            <Text style={styles.smallPromoText} numberOfLines={1}>
+              Support OfficeOrbit • Zero Ads with Pro
+            </Text>
             <TouchableOpacity onPress={onUpgradePress} style={styles.ctaButton}>
               <Text style={styles.ctaText}>{currentAd.cta}</Text>
               <Ionicons name="arrow-forward-outline" size={14} color="#FFF" style={styles.ctaIcon} />
@@ -139,10 +163,19 @@ export const AdSlot: React.FC<AdSlotProps> = ({ onUpgradePress, screen = 'dashbo
 };
 
 const styles = StyleSheet.create({
+  // Adapts to device screen width automatically via flex layout
   outerContainer: {
     width: '100%',
-    paddingHorizontal: theme.spacing.m,
+    // No paddingHorizontal here — Dashboard's scrollContent already has padding:16.
+    // Adding it here caused double-inset (square/shrunken look) on the Dashboard.
     marginVertical: theme.spacing.m,
+    // Cap width on tablets and larger screens for visual balance
+    maxWidth: Math.min(SCREEN_WIDTH, 600),
+    alignSelf: 'center',
+  },
+  // Calendar screen's ScrollView has no horizontal padding, so we add it here.
+  outerContainerCalendar: {
+    paddingHorizontal: 20,
   },
   container: {
     borderRadius: theme.borderRadius.m,
@@ -152,7 +185,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF',
     shadowColor: '#5B4DFF',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 10,
     elevation: 2,
   },
@@ -201,11 +234,13 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(0,0,0,0.05)',
     paddingTop: theme.spacing.s,
+    gap: 8,
   },
   smallPromoText: {
     fontSize: 11,
     color: '#888',
     fontStyle: 'italic',
+    flex: 1,
   },
   ctaButton: {
     backgroundColor: theme.colors.primary,

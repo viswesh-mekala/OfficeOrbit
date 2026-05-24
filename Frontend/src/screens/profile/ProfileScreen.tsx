@@ -26,7 +26,7 @@ import { useAuth } from '../../store/AuthContext';
 import { useToast } from '../../components/common/Toast';
 import { CompanyLocation } from '../../types/auth.types';
 import useEntitlements from '../../hooks/useEntitlements';
-import { PaywallModal } from '../../components/billing/PaywallModal';
+import { router } from 'expo-router'; // Replaces PaywallModal popup
 import { parseTimeToDate, formatTimeDisplay, formatTimeForDB, formatTime } from '../../utils/time';
 import {
     fetchPlaceDetails,
@@ -132,7 +132,7 @@ export const Profile: React.FC = () => {
     const [isEditing, setIsEditing] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [showLogoutModal, setShowLogoutModal] = useState(false);
-    const [paywallVisible, setPaywallVisible] = useState(false);
+    // paywallVisible state removed in favor of dedicated subscription route
     const scrollRef = useRef<ScrollView>(null);
     const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const searchSequenceRef = useRef(0);
@@ -509,16 +509,17 @@ export const Profile: React.FC = () => {
                                 style={[
                                     styles.premiumMemberCard,
                                     planCode === 'pro_lifetime' && styles.memberCardPro,
-                                    planCode === 'auto_lifetime' && styles.memberCardAuto
+                                    planCode === 'auto_lifetime' && styles.memberCardAuto,
+                                    planCode === 'free' && styles.memberCardFree
                                 ]}
                             >
                                 <LinearGradient
                                     colors={
                                         planCode === 'auto_lifetime'
-                                            ? ['#251A1B', '#1D1213', '#2B191B']
+                                            ? ['#7B6FFF', '#D83F54', '#FF5252'] // Breathtaking Violet-Crimson Sunset
                                             : planCode === 'pro_lifetime'
-                                            ? ['#121B2D', '#0B111F', '#192842']
-                                            : ['#1A1D24', '#111318', '#252932']
+                                            ? [theme.colors.primary, '#7B6FFF', '#9B8FFF'] // Royal Glowing Violet
+                                            : ['#1B5E20', '#2E7D32', '#4CAF50'] // Premium Emerald Green Gradient
                                     }
                                     style={styles.memberCardGradient}
                                     start={{ x: 0, y: 0 }}
@@ -529,16 +530,23 @@ export const Profile: React.FC = () => {
                                             <Ionicons 
                                                 name={planCode === 'auto_lifetime' ? 'rocket' : planCode === 'pro_lifetime' ? 'star' : 'planet'} 
                                                 size={14} 
-                                                color={planCode === 'auto_lifetime' ? '#FF5252' : planCode === 'pro_lifetime' ? '#7B6FFF' : '#4CAF50'} 
+                                                color="#FFF" 
                                             />
-                                            <Text style={[
-                                                styles.cardBadgeText,
-                                                { color: planCode === 'auto_lifetime' ? '#FF5252' : planCode === 'pro_lifetime' ? '#7B6FFF' : '#4CAF50' }
-                                            ]}>
+                                            <Text style={[styles.cardBadgeText, { color: '#FFF' }]}>
                                                 {planCode === 'auto_lifetime' ? 'AUTO LIFETIME' : planCode === 'pro_lifetime' ? 'PRO LIFETIME' : 'SMART FREE'}
                                             </Text>
                                         </View>
-                                        <Text style={styles.cardBrand}>OfficeOrbit</Text>
+                                        {planCode === 'free' ? (
+                                            <TouchableOpacity 
+                                                onPress={() => router.replace('/subscription')} 
+                                                style={styles.cardUpgradeBtn}
+                                            >
+                                                <Text style={styles.cardUpgradeText}>UPGRADE</Text>
+                                                <Ionicons name="arrow-forward" size={10} color={theme.colors.primary} />
+                                            </TouchableOpacity>
+                                        ) : (
+                                            <Text style={styles.cardBrand}>OfficeOrbit</Text>
+                                        )}
                                     </View>
 
                                     <View style={styles.cardContent}>
@@ -551,15 +559,8 @@ export const Profile: React.FC = () => {
                                     </View>
 
                                     <View style={styles.cardFooter}>
-                                        <Text style={styles.cardSerial}>ID: {profile.id.slice(0, 18).toUpperCase()}</Text>
                                         {planCode === 'free' ? (
-                                            <TouchableOpacity 
-                                                onPress={() => setPaywallVisible(true)} 
-                                                style={styles.cardUpgradeBtn}
-                                            >
-                                                <Text style={styles.cardUpgradeText}>UPGRADE</Text>
-                                                <Ionicons name="arrow-forward" size={10} color="#000" />
-                                            </TouchableOpacity>
+                                            <Text style={styles.cardFooterFreeText}>OfficeOrbit Basic Pass</Text>
                                         ) : (
                                             <View style={styles.activePill}>
                                                 <Text style={styles.activePillText}>LIFETIME PASS</Text>
@@ -569,7 +570,7 @@ export const Profile: React.FC = () => {
                                 </LinearGradient>
                             </Animated.View>
 
-                            <SectionCard title="Company" icon="business-outline" iconColor={theme.colors.primary} delay={100}>
+                             <SectionCard title="Company" icon="business-outline" iconColor={theme.colors.primary} delay={100}>
                                 <InfoRow icon="briefcase-outline" label="Company" value={profile.company || 'Not set'} />
                                 <InfoRow icon="location-outline" label="Location" value={profile.company_location?.address || 'Not set'} />
                             </SectionCard>
@@ -593,11 +594,11 @@ export const Profile: React.FC = () => {
                                 <InfoRow icon="repeat-outline" label="Period" value={(profile.office_target_period || profile.wfh_period) === 'month' ? 'Per Month' : 'Per Week'} />
                             </SectionCard>
 
-                            <SectionCard title="Subscription Settings" icon="settings-outline" iconColor="#555" delay={350}>
+                            <SectionCard title="Subscription Settings" icon="settings-outline" iconColor={theme.colors.primary} delay={350}>
                                 <TouchableOpacity 
                                     onPress={() => {
                                         if (planCode === 'free') {
-                                            setPaywallVisible(true);
+                                            router.replace('/subscription');
                                         } else {
                                             Alert.alert(
                                                 'Premium Activated ✨', 
@@ -609,7 +610,7 @@ export const Profile: React.FC = () => {
                                 >
                                     <View style={styles.infoRowLeft}>
                                         <View style={styles.infoRowIconBg}>
-                                            <Ionicons name="card-outline" size={14} color="#777" />
+                                            <Ionicons name="card-outline" size={14} color={theme.colors.primary} />
                                         </View>
                                         <Text style={styles.infoLabel}>Subscription Tier</Text>
                                     </View>
@@ -618,17 +619,19 @@ export const Profile: React.FC = () => {
                                             styles.settingsPlanBadge,
                                             planCode === 'auto_lifetime' && styles.badgeAuto,
                                             planCode === 'pro_lifetime' && styles.badgePro,
+                                            planCode === 'free' && styles.badgeFree,
                                         ]}>
                                             <Text style={[
                                                 styles.settingsPlanBadgeText,
                                                 planCode === 'auto_lifetime' && styles.badgeTextAuto,
                                                 planCode === 'pro_lifetime' && styles.badgeTextPro,
+                                                planCode === 'free' && styles.badgeTextFree,
                                             ]}>
                                                 {planCode === 'auto_lifetime' ? 'Auto Lifetime 🚀' : planCode === 'pro_lifetime' ? 'Pro Lifetime 👑' : 'Free Plan'}
                                             </Text>
                                         </View>
                                         {planCode === 'free' && (
-                                            <Ionicons name="chevron-forward" size={16} color="#BBB" />
+                                            <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
                                         )}
                                     </View>
                                 </TouchableOpacity>
@@ -937,10 +940,7 @@ export const Profile: React.FC = () => {
             </TouchableOpacity>
         </Modal>
 
-        <PaywallModal
-            visible={paywallVisible}
-            onClose={() => setPaywallVisible(false)}
-        />
+        {/* PaywallModal modal removed */}
         </>
     );
 };
@@ -1512,6 +1512,12 @@ const styles = StyleSheet.create({
         borderWidth: 1,
         borderColor: 'rgba(255, 82, 82, 0.25)',
     },
+    memberCardFree: {
+        shadowColor: '#4CAF50',
+        shadowOpacity: 0.2,
+        borderWidth: 1,
+        borderColor: 'rgba(76, 175, 80, 0.25)',
+    },
     memberCardGradient: {
         padding: 20,
         height: 175,
@@ -1569,10 +1575,10 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: 'rgba(255,255,255,0.05)',
     },
-    cardSerial: {
+    cardFooterFreeText: {
         fontSize: 10,
-        fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-        color: '#777',
+        fontWeight: '700',
+        color: 'rgba(255, 255, 255, 0.45)',
         letterSpacing: 0.5,
     },
     cardUpgradeBtn: {
@@ -1590,7 +1596,7 @@ const styles = StyleSheet.create({
     cardUpgradeText: {
         fontSize: 9,
         fontWeight: '800',
-        color: '#000',
+        color: theme.colors.primary, // Sleek brand purple upgrade button text
         letterSpacing: 0.5,
     },
     activePill: {
@@ -1616,33 +1622,39 @@ const styles = StyleSheet.create({
     settingsBadgeRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
+        gap: 6,
     },
     settingsPlanBadge: {
-        backgroundColor: 'rgba(0,0,0,0.05)',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 12,
     },
     settingsPlanBadgeText: {
         fontSize: 12,
         fontWeight: '700',
-        color: '#555',
     },
     badgeAuto: {
-        backgroundColor: 'rgba(255, 82, 82, 0.08)',
+        backgroundColor: 'rgba(255, 82, 82, 0.06)',
         borderWidth: 1,
         borderColor: 'rgba(255, 82, 82, 0.15)',
     },
     badgePro: {
-        backgroundColor: 'rgba(123, 111, 255, 0.08)',
+        backgroundColor: 'rgba(91, 77, 255, 0.06)',
         borderWidth: 1,
-        borderColor: 'rgba(123, 111, 255, 0.15)',
+        borderColor: 'rgba(91, 77, 255, 0.15)',
+    },
+    badgeFree: {
+        backgroundColor: 'rgba(76, 175, 80, 0.06)',
+        borderWidth: 1,
+        borderColor: 'rgba(76, 175, 80, 0.15)',
     },
     badgeTextAuto: {
         color: '#FF5252',
     },
     badgeTextPro: {
-        color: '#7B6FFF',
+        color: '#5B4DFF',
+    },
+    badgeTextFree: {
+        color: '#2E7D32', // Emerald green for premium readable contrast
     },
 });

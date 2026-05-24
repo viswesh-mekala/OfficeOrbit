@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, Modal, TouchableOpacity, Platform } from 'react
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import useEntitlements from '../../hooks/useEntitlements';
+import { theme } from '../../theme/theme';
 
 let InterstitialAd: any = null;
 let AdEventType: any = null;
@@ -115,7 +116,7 @@ export const AdInterstitial: React.FC<AdInterstitialProps> = ({ visible, onClose
     >
       <View style={styles.overlay}>
         <LinearGradient
-          colors={['#0F172A', '#1E293B']}
+          colors={['#F5F8FF', '#EBEFFF']}
           style={styles.container}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
@@ -134,7 +135,7 @@ export const AdInterstitial: React.FC<AdInterstitialProps> = ({ visible, onClose
               {countdown > 0 ? (
                 <Text style={styles.countdownText}>Close in {countdown}s</Text>
               ) : (
-                <Ionicons name="close-circle" size={28} color="#FFF" />
+                <Ionicons name="close-circle" size={28} color={theme.colors.text.secondary} />
               )}
             </TouchableOpacity>
           </View>
@@ -145,7 +146,7 @@ export const AdInterstitial: React.FC<AdInterstitialProps> = ({ visible, onClose
               <Ionicons 
                 name={adIndex === 0 ? 'sparkles-sharp' : 'rocket-sharp'} 
                 size={40} 
-                color={adIndex === 0 ? '#38BDF8' : '#F43F5E'} 
+                color={adIndex === 0 ? '#5B4DFF' : '#FF5252'} 
               />
             </View>
             <Text style={styles.subtitle}>{currentAd.subtitle}</Text>
@@ -157,7 +158,7 @@ export const AdInterstitial: React.FC<AdInterstitialProps> = ({ visible, onClose
           <View style={styles.footer}>
             <TouchableOpacity onPress={onClose} style={styles.ctaButton}>
               <LinearGradient
-                colors={adIndex === 0 ? ['#38BDF8', '#0284C7'] : ['#F43F5E', '#E11D48']}
+                colors={adIndex === 0 ? ['#5B4DFF', '#7B6FFF'] : ['#FF5252', '#FF7F7F']}
                 style={styles.ctaGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
@@ -177,7 +178,7 @@ export const AdInterstitial: React.FC<AdInterstitialProps> = ({ visible, onClose
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    backgroundColor: 'rgba(15, 23, 42, 0.45)', // Sleek translucent dark backdrop
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -186,10 +187,16 @@ const styles = StyleSheet.create({
     height: '75%',
     borderRadius: 24,
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: '#E2E8F0',
     overflow: 'hidden',
     padding: 24,
     justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#5B4DFF',
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 6,
   },
   header: {
     flexDirection: 'row',
@@ -197,13 +204,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sponsoredBadge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: 'rgba(91, 77, 255, 0.08)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 6,
   },
   sponsoredText: {
-    color: '#FFF',
+    color: '#5B4DFF',
     fontSize: 10,
     fontWeight: '800',
     letterSpacing: 1,
@@ -212,13 +219,13 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   closeBtnDisabled: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.04)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 20,
   },
   countdownText: {
-    color: '#E2E8F0',
+    color: '#475569',
     fontSize: 12,
     fontWeight: '700',
   },
@@ -230,15 +237,15 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: '#F1F5F9',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
   },
   subtitle: {
-    color: '#94A3B8',
+    color: '#5B4DFF',
     fontSize: 12,
     fontWeight: '800',
     textTransform: 'uppercase',
@@ -246,14 +253,14 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   title: {
-    color: '#FFF',
+    color: '#1E293B',
     fontSize: 22,
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 12,
   },
   description: {
-    color: '#CBD5E1',
+    color: '#4B5563',
     fontSize: 14,
     lineHeight: 20,
     textAlign: 'center',
@@ -285,7 +292,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   smallText: {
-    color: '#64748B',
+    color: '#94A3B8',
     fontSize: 11,
   },
 });

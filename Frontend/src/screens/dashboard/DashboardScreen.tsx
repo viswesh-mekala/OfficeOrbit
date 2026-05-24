@@ -21,7 +21,7 @@ import { MetricCard } from '../../components/common/MetricCard';
 import { AlertCard } from '../../components/common/AlertCard';
 import { WeeklyStatCard } from '../../components/common/WeeklyStatCard';
 import { useToast } from '../../components/common/Toast';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, router } from 'expo-router';
 
 import { useAuth } from '../../store/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,9 +30,8 @@ import * as SecureStore from 'expo-secure-store';
 import { useAttendance } from '../../hooks/useAttendance';
 import useEntitlements from '../../hooks/useEntitlements';
 import { AdSlot } from '../../components/ads/AdSlot';
-import { PaywallModal } from '../../components/billing/PaywallModal';
+// PaywallModal removed in favor of first-class subscription page
 import { AdInterstitial } from '../../components/ads/AdInterstitial';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useAttendanceRecovery } from '../../hooks/useAttendanceRecovery';
 import { AppDialog } from '../../components/common/AppDialog';
 import { SlideAction } from '../../components/common/SlideAction';
@@ -65,7 +64,7 @@ export const Dashboard: React.FC = () => {
   const { user: authUser, profile, loading: authLoading } = useAuth();
   const { planCode, capabilities } = useEntitlements();
   const { showToast } = useToast();
-  const [paywallVisible, setPaywallVisible] = useState(false);
+  // paywallVisible state removed in favor of dedicated subscription route
   const {
     todayLog,
     weeklyLogs,
@@ -1018,33 +1017,6 @@ export const Dashboard: React.FC = () => {
               <Text style={styles.greetingTitle}>{getGreeting()}</Text>
               <View style={styles.nameAvatarRow}>
                 <Text style={styles.greetingName} numberOfLines={1}>{userName}</Text>
-                
-                {/* Glowing Active Plan Avatar Ring */}
-                <TouchableOpacity 
-                  onPress={() => setPaywallVisible(true)}
-                  style={[
-                    styles.headerAvatarOuter,
-                    planCode === 'pro_lifetime' && styles.avatarRingPro,
-                    planCode === 'auto_lifetime' && styles.avatarRingAuto,
-                  ]}
-                >
-                  <LinearGradient
-                    colors={
-                      planCode === 'auto_lifetime'
-                        ? ['#FF5252', '#FF8F8F']
-                        : planCode === 'pro_lifetime'
-                        ? ['#5B4DFF', '#7B6FFF']
-                        : ['#888888', '#B0B0B0']
-                    }
-                    style={styles.avatarGradient}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                  >
-                    <Text style={styles.headerAvatarText}>
-                      {(userName || '?').split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)}
-                    </Text>
-                  </LinearGradient>
-                </TouchableOpacity>
               </View>
             </View>
             <StatusPill
@@ -1117,9 +1089,6 @@ export const Dashboard: React.FC = () => {
             </View>
           )}
         </Animated.View>
-
-        {/* Dynamic Ad Slot for Free Tier */}
-        <AdSlot onUpgradePress={() => setPaywallVisible(true)} />
 
         {/* Compliance Section */}
         <Animated.View
@@ -1227,6 +1196,9 @@ export const Dashboard: React.FC = () => {
             <AlertCard {...dashboardMetrics.alert} />
           </View>
         </Animated.View>
+
+        {/* Dynamic Ad Slot for Free Tier */}
+        <AdSlot onUpgradePress={() => router.replace('/subscription')} />
       </ScrollView>
 
       {/* ── Streak Modal (redesigned) ── */}
@@ -1340,10 +1312,7 @@ export const Dashboard: React.FC = () => {
           </Pressable>
         </Pressable>
       </Modal>
-      <PaywallModal
-        visible={paywallVisible}
-        onClose={() => setPaywallVisible(false)}
-      />
+      {/* PaywallModal modal removed */}
       <AdInterstitial
         visible={interstitialVisible}
         onClose={() => setInterstitialVisible(false)}

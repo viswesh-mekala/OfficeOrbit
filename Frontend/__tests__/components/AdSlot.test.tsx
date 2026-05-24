@@ -25,7 +25,7 @@ describe('AdSlot Component Unit Tests', () => {
     jest.clearAllMocks();
   });
 
-  test('1. Renders nothing when ads are disabled', () => {
+  test('1. Renders nothing when ads are disabled (Pro/Auto — zero pixels)', () => {
     mockUseEntitlements.mockReturnValue({
       capabilities: { ads_enabled: false },
     });
@@ -34,19 +34,31 @@ describe('AdSlot Component Unit Tests', () => {
     expect(toJSON()).toBeNull();
   });
 
-  test('2. Renders mock sponsor card when ads are enabled', () => {
+  test('2. Renders rich card with SPONSORED badge when ads are enabled (dashboard)', () => {
     mockUseEntitlements.mockReturnValue({
       capabilities: { ads_enabled: true },
     });
 
-    const { getByText } = render(<AdSlot onUpgradePress={jest.fn()} />);
+    const { getByText } = render(<AdSlot onUpgradePress={jest.fn()} screen="dashboard" />);
 
     expect(getByText('SPONSORED')).toBeTruthy();
     expect(getByText(/Orbit Pro Lifetime/)).toBeTruthy();
     expect(getByText('Go Ad-Free')).toBeTruthy();
   });
 
-  test('3. Triggers onUpgradePress when CTA button is tapped', () => {
+  test('3. Renders rich card with SPONSORED badge when ads are enabled (calendar)', () => {
+    mockUseEntitlements.mockReturnValue({
+      capabilities: { ads_enabled: true },
+    });
+
+    const { getByText } = render(<AdSlot onUpgradePress={jest.fn()} screen="calendar" />);
+
+    expect(getByText('SPONSORED')).toBeTruthy();
+    expect(getByText(/Orbit Pro Lifetime/)).toBeTruthy();
+    expect(getByText('Go Ad-Free')).toBeTruthy();
+  });
+
+  test('4. Triggers onUpgradePress when CTA button is tapped', () => {
     mockUseEntitlements.mockReturnValue({
       capabilities: { ads_enabled: true },
     });
@@ -58,17 +70,21 @@ describe('AdSlot Component Unit Tests', () => {
     expect(mockUpgrade).toHaveBeenCalledTimes(1);
   });
 
-  test('4. Triggers onUpgradePress when small close button is tapped', () => {
+  test('5. Does not render anything for Pro user (ads_enabled=false)', () => {
     mockUseEntitlements.mockReturnValue({
-      capabilities: { ads_enabled: true },
+      capabilities: { ads_enabled: false },
     });
 
-    const mockUpgrade = jest.fn();
-    const { getByText } = render(<AdSlot onUpgradePress={mockUpgrade} />);
+    const { toJSON } = render(<AdSlot onUpgradePress={jest.fn()} screen="dashboard" />);
+    expect(toJSON()).toBeNull();
+  });
 
-    // Since closeBtn wraps Ionicons close-circle-outline, we can target it or press the close button.
-    // In our component, closeBtn doesn't have testID or text, but we can query by type or similar.
-    // Or we can find by closeBtn container press by adding testID or matching children.
-    // Let's add a testID or target it using container query.
+  test('6. Does not render anything for Auto user (ads_enabled=false)', () => {
+    mockUseEntitlements.mockReturnValue({
+      capabilities: { ads_enabled: false },
+    });
+
+    const { toJSON } = render(<AdSlot onUpgradePress={jest.fn()} screen="calendar" />);
+    expect(toJSON()).toBeNull();
   });
 });
