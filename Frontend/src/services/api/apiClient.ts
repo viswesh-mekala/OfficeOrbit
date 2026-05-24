@@ -29,6 +29,9 @@ export async function callApi<T = any>(
             requestBody.timezoneOffset = new Date().getTimezoneOffset();
         }
 
+        // Force session/token refresh if expired (highly relevant for background tasks)
+        await supabase.auth.getSession();
+
         const { data, error } = await supabase.functions.invoke(functionName, {
             body: Object.keys(requestBody).length > 0 ? requestBody : undefined,
         });
