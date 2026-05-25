@@ -78,9 +78,30 @@ const clearState = async (): Promise<void> => saveState({ ...DEFAULT_STATE });
 
 type OfficeLoc = { latitude: number; longitude: number };
 
+const OFFICE_CACHE_KEY = 'officeorbit_office_location_cache';
+
 const fetchOfficeLocation = async (): Promise<OfficeLoc | null> => {
+    try {
+        // 1. Attempt to read from local SecureStore cache (instant, offline-first)
+        const cached = await SecureStore.getItemAsync(OFFICE_CACHE_KEY);
+        if (cached) {
+            return JSON.parse(cached) as OfficeLoc;
+        }
+    } catch (_e) {
+        // Ignore read failure
+    }
+
+    // 2. Fall back to network call if cache is missing (fallback only)
     const { data: profile, error } = await callApi<{ company_location: OfficeLoc | null }>('profile-get');
     if (error || !profile?.company_location) return null;
+
+    // Cache the retrieved coordinates locally
+    try {
+        await SecureStore.setItemAsync(OFFICE_CACHE_KEY, JSON.stringify(profile.company_location));
+    } catch (_e) {
+        // Ignore storage failure
+    }
+
     return profile.company_location;
 };
 

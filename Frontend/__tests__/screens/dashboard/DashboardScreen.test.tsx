@@ -195,4 +195,59 @@ describe('DashboardScreen rendered UI tests', () => {
     expect(getAllByText('Please grant location permission to check in.').length).toBeGreaterThan(0);
     expect(getAllByText('Open Settings').length).toBeGreaterThan(0);
   });
+
+  test('4. Netflix-style paywall prompt appears after 1.5s delay for new free users', async () => {
+    jest.useFakeTimers();
+    const SecureStore = require('expo-secure-store');
+    (SecureStore.getItemAsync as jest.Mock).mockImplementation((key: string) => {
+      if (key === 'has_seen_initial_paywall_prompt') {
+        return Promise.resolve(null);
+      }
+      return Promise.resolve(null);
+    });
+
+    const { getByText, queryByText } = await renderDashboard();
+
+    // Initially, paywall modal should not be visible (delay is 1.5s)
+    expect(queryByText('Smart Free')).toBeNull();
+
+    // Advance timers by 1.5s (1500ms)
+    act(() => {
+      jest.advanceTimersByTime(1500);
+    });
+
+    // Wait for paywall text to appear
+    await waitFor(() => {
+      expect(getByText('Smart Free')).toBeTruthy();
+    });
+
+    // Verify SecureStore setItemAsync was called to persist the flag
+    expect(SecureStore.setItemAsync).toHaveBeenCalledWith('has_seen_initial_paywall_prompt', 'true');
+    jest.useRealTimers();
+  });
+
+  test('5. Netflix-style paywall prompt does not appear if user has already seen it', async () => {
+    jest.useFakeTimers();
+    const SecureStore = require('expo-secure-store');
+    (SecureStore.getItemAsync as jest.Mock).mockImplementation((key: string) => {
+      if (key === 'has_seen_initial_paywall_prompt') {
+        return Promise.resolve('true');
+      }
+      return Promise.resolve(null);
+    });
+
+    const { queryByText } = await renderDashboard();
+
+    // Advance timers by 1.5s (1500ms)
+    act(() => {
+      jest.advanceTimersByTime(1500);
+    });
+
+    // Paywall modal should not be visible
+    expect(queryByText('Smart Free')).toBeNull();
+
+    // Verify SecureStore setItemAsync was NOT called
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalledWith('has_seen_initial_paywall_prompt', 'true');
+    jest.useRealTimers();
+  });
 });

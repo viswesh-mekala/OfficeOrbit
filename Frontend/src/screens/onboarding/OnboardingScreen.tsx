@@ -218,6 +218,8 @@ export const Onboarding: React.FC = () => {
   // Permission states
   const [fgStatus, setFgStatus] = useState<Location.PermissionStatus | null>(null);
   const [bgStatus, setBgStatus] = useState<Location.PermissionStatus | null>(null);
+  const [isBatteryOptimizationDisabled, setIsBatteryOptimizationDisabled] = useState(Platform.OS !== 'android');
+  const [hasPressedBatteryConfigure, setHasPressedBatteryConfigure] = useState(false);
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
 
   // Auto-check permissions on AppState transition to active (foreground)
@@ -228,6 +230,9 @@ export const Onboarding: React.FC = () => {
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (prevState.match(/inactive|background/) && nextState === 'active') {
         void checkPermissions();
+        if (hasPressedBatteryConfigure) {
+          setIsBatteryOptimizationDisabled(true);
+        }
       }
       prevState = nextState;
     });
@@ -235,7 +240,7 @@ export const Onboarding: React.FC = () => {
     return () => {
       subscription.remove();
     };
-  }, [step]);
+  }, [step, hasPressedBatteryConfigure]);
 
   const checkPermissions = async () => {
     try {
@@ -243,6 +248,9 @@ export const Onboarding: React.FC = () => {
       const { status: bg } = await Location.getBackgroundPermissionsAsync();
       setFgStatus(fg);
       setBgStatus(bg);
+      if (hasPressedBatteryConfigure) {
+        setIsBatteryOptimizationDisabled(true);
+      }
     } catch (err) {
       console.warn('[Onboarding] Error checking permissions:', err);
     }
@@ -532,10 +540,22 @@ export const Onboarding: React.FC = () => {
     } else {
       // Permissions step: verify background permission before submitting profile
       const isLocationGranted = fgStatus === 'granted' && bgStatus === 'granted';
+      const isBatteryGranted = isBatteryOptimizationDisabled;
+
       if (!isLocationGranted) {
         await handleRequestPermissions();
         return;
       }
+
+      if (!isBatteryGranted) {
+        Alert.alert(
+          'Battery Optimization Required',
+          'Please tap "Configure" under Battery Optimization to disable battery restrictions so geofencing updates are not blocked.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
       handleSubmit();
     }
   };
@@ -1061,7 +1081,8 @@ export const Onboarding: React.FC = () => {
 
   const renderPermissions = () => {
     const isLocationGranted = fgStatus === 'granted' && bgStatus === 'granted';
-    
+    const isBatteryGranted = isBatteryOptimizationDisabled;
+
     return (
       <Animated.View
         key='permissions'
@@ -1093,33 +1114,31 @@ export const Onboarding: React.FC = () => {
                   Allows automatic check-in/out without opening the app.
                 </Text>
               </View>
-              <View style={[styles.statusBadge, { backgroundColor: isLocationGranted ? '#E8F5E9' : '#FFF3E0' }]}>
-                <Text style={[styles.statusBadgeText, { color: isLocationGranted ? '#2E7D32' : '#E65100' }]}>
-                  {isLocationGranted ? 'Authorized' : 'Setup Required'}
+              <TouchableOpacity 
+                style={[styles.batteryConfigBtn, isLocationGranted ? { backgroundColor: '#E8F5E9' } : null]}
+                onPress={handleRequestPermissions}
+                disabled={isLocationGranted}
+              >
+                <Text style={[styles.batteryConfigBtnText, isLocationGranted ? { color: '#2E7D32' } : null]}>
+                  {isLocationGranted ? 'Configured' : 'Configure'}
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
 
             {!isLocationGranted && (
               <Animated.View entering={FadeIn.duration(400)} style={styles.instructionBox}>
-                <Text style={styles.instructionHeader}>Step-by-Step Instructions:</Text>
+                <Text style={styles.instructionHeader}>Required Configuration:</Text>
                 <View style={styles.instructionRow}>
-                  <Text style={styles.instructionNumber}>1.</Text>
+                  <Text style={styles.instructionNumber}>•</Text>
                   <Text style={styles.instructionText}>
-                    Tap the main <Text style={{ fontWeight: '600' }}>Authorize Location Access</Text> button below.
-                  </Text>
-                </View>
-                <View style={styles.instructionRow}>
-                  <Text style={styles.instructionNumber}>2.</Text>
-                  <Text style={styles.instructionText}>
-                    Select <Text style={{ fontWeight: '600' }}>Allow all the time</Text> (Android) or <Text style={{ fontWeight: '600' }}>Always Allow</Text> (iOS) in the device settings prompt.
+                    Tap <Text style={{ fontWeight: '700' }}>Configure</Text> and select <Text style={{ fontWeight: '700' }}>"Allow all the time"</Text> (or "Always Allow") in device settings. Geofencing will fail without this.
                   </Text>
                 </View>
                 {fgStatus === 'granted' && bgStatus !== 'granted' && (
                   <View style={styles.warningAlert}>
                     <Ionicons name="warning-outline" size={14} color="#E65100" />
                     <Text style={styles.warningAlertText}>
-                      Currently set to "While using app". You must select "Allow all the time" in your system settings for background geofencing to work.
+                      Currently set to "While using app". Tap Configure ➜ Permissions ➜ Location ➜ select "Allow all the time".
                     </Text>
                   </View>
                 )}
@@ -1129,37 +1148,40 @@ export const Onboarding: React.FC = () => {
 
           {/* Card 2: Battery Optimization (Android only) */}
           {Platform.OS === 'android' && (
-            <View style={styles.permissionCard}>
+            <View style={[styles.permissionCard, isBatteryGranted ? styles.permissionCardSuccess : null]}>
               <View style={styles.permissionCardHeader}>
-                <View style={[styles.permissionIconWrap, { backgroundColor: '#FFF3E0' }]}>
-                  <Ionicons name='battery-charging-outline' size={20} color='#FF9800' />
+                <View style={[styles.permissionIconWrap, { backgroundColor: isBatteryGranted ? '#E8F5E9' : '#FFF3E0' }]}>
+                  <Ionicons 
+                    name='battery-charging-outline' 
+                    size={20} 
+                    color={isBatteryGranted ? '#4CAF50' : '#FF9800'} 
+                  />
                 </View>
                 <View style={styles.permissionCardTextWrap}>
                   <Text style={styles.permissionCardTitle}>Disable Battery Restrictions</Text>
                   <Text style={styles.permissionCardDesc}>
-                    Prevents Android from putting geofencing to sleep when your phone is in your pocket.
+                    Prevents system from putting background geofencing to sleep.
                   </Text>
                 </View>
                 <TouchableOpacity 
-                  style={styles.batteryConfigBtn}
-                  onPress={() => Linking.openSettings()}
+                  style={[styles.batteryConfigBtn, isBatteryGranted ? { backgroundColor: '#E8F5E9' } : null]}
+                  onPress={async () => {
+                    setHasPressedBatteryConfigure(true);
+                    Linking.openSettings();
+                  }}
                 >
-                  <Text style={styles.batteryConfigBtnText}>Configure</Text>
+                  <Text style={[styles.batteryConfigBtnText, isBatteryGranted ? { color: '#2E7D32' } : null]}>
+                    {isBatteryGranted ? 'Configured' : 'Configure'}
+                  </Text>
                 </TouchableOpacity>
               </View>
               
               <View style={styles.instructionBox}>
-                <Text style={styles.instructionHeader}>How to disable restrictions:</Text>
+                <Text style={styles.instructionHeader}>Required Configuration:</Text>
                 <View style={styles.instructionRow}>
                   <Text style={styles.instructionNumber}>•</Text>
                   <Text style={styles.instructionText}>
-                    Tap <Text style={{ fontWeight: '600' }}>Configure</Text> to open App Settings.
-                  </Text>
-                </View>
-                <View style={styles.instructionRow}>
-                  <Text style={styles.instructionNumber}>•</Text>
-                  <Text style={styles.instructionText}>
-                    Select <Text style={{ fontWeight: '600' }}>Battery</Text> ➜ Set to <Text style={{ fontWeight: '600' }}>Unrestricted</Text> (or disable optimization).
+                    Tap <Text style={{ fontWeight: '700' }}>Configure</Text> ➜ select <Text style={{ fontWeight: '700' }}>Battery</Text> ➜ set to <Text style={{ fontWeight: '700' }}>"Unrestricted or Allow background actiity (No restrictions)"</Text> to ensure continuous geofencing.
                   </Text>
                 </View>
               </View>
@@ -1246,7 +1268,9 @@ export const Onboarding: React.FC = () => {
                 <Button
                   title={
                     step === STEPS.length - 1
-                      ? (fgStatus === 'granted' && bgStatus === 'granted' ? 'Launch into Orbit 🚀' : 'Authorize Location Access')
+                      ? (fgStatus === 'granted' && bgStatus === 'granted'
+                          ? (isBatteryOptimizationDisabled ? 'Launch into Orbit 🚀' : 'Configure Battery Restrictions')
+                          : 'Configure Location Access')
                       : 'Continue'
                   }
                   onPress={goNext}

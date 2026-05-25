@@ -30,7 +30,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useAttendance } from '../../hooks/useAttendance';
 import useEntitlements from '../../hooks/useEntitlements';
 import { AdSlot } from '../../components/ads/AdSlot';
-// PaywallModal removed in favor of first-class subscription page
+import { PaywallModal } from '../../components/billing/PaywallModal';
 import { AdInterstitial } from '../../components/ads/AdInterstitial';
 import { useAttendanceRecovery } from '../../hooks/useAttendanceRecovery';
 import { AppDialog } from '../../components/common/AppDialog';
@@ -81,6 +81,7 @@ export const Dashboard: React.FC = () => {
   const [showFirstDayHint, setShowFirstDayHint] = useState(false);
   const [showRecoveryDialog, setShowRecoveryDialog] = useState(false);
   const [interstitialVisible, setInterstitialVisible] = useState(false);
+  const [paywallPromptVisible, setPaywallPromptVisible] = useState(false);
 
   // Fallback data
   const userName = profile?.username || authUser?.user_metadata?.name || 'User';
@@ -108,6 +109,26 @@ export const Dashboard: React.FC = () => {
       cancelled = true;
     };
   }, [authUser?.id]);
+
+  useEffect(() => {
+    const checkInitialPaywall = async () => {
+      if (planCode !== 'free') return;
+      try {
+        const hasSeen = await SecureStore.getItemAsync('has_seen_initial_paywall_prompt');
+        if (!hasSeen) {
+          setTimeout(() => {
+            setPaywallPromptVisible(true);
+          }, 1500);
+          await SecureStore.setItemAsync('has_seen_initial_paywall_prompt', 'true');
+        }
+      } catch (_err) {
+        // Safe fallback
+      }
+    };
+    if (!attendanceLoading) {
+      void checkInitialPaywall();
+    }
+  }, [attendanceLoading, planCode]);
 
   useEffect(() => {
     if (!pendingRecovery) return;
@@ -194,7 +215,7 @@ export const Dashboard: React.FC = () => {
           todayLog.status === 'present'
             ? 'Office'
             : todayLog.status === 'wfh'
-              ? 'Home'
+              ? 'WFH'
               : todayLog.status === 'holiday'
                 ? 'Holiday'
                 : todayLog.status === 'leave'
@@ -207,7 +228,7 @@ export const Dashboard: React.FC = () => {
 
     if (isWfh) {
       statusVariant = 'wfh';
-      locationText = 'Work From Home';
+      locationText = 'WFH';
     } else if (isPresent) {
       statusVariant = 'wfo';
       locationText = todayLog.location_check_in?.address || 'Office';
@@ -1312,7 +1333,10 @@ export const Dashboard: React.FC = () => {
           </Pressable>
         </Pressable>
       </Modal>
-      {/* PaywallModal modal removed */}
+      <PaywallModal
+        visible={paywallPromptVisible}
+        onClose={() => setPaywallPromptVisible(false)}
+      />
       <AdInterstitial
         visible={interstitialVisible}
         onClose={() => setInterstitialVisible(false)}

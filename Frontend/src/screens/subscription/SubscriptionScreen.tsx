@@ -24,8 +24,86 @@ import {
 } from '../../services/billing/EntitlementsService';
 import { theme } from '../../theme/theme';
 import * as WebBrowser from 'expo-web-browser';
+import Svg, { Path, Rect, Circle, Polygon, G, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// ── High-Fidelity MNC brand logos in native SVG ──
+
+const GPayLogo = () => (
+  <Svg width={36} height={20} viewBox="0 0 36 20" fill="none">
+    <Path d="M12.5 5c-2.5 0-4.5 2-4.5 4.5S10 14 12.5 14h4c1.4 0 2.5-1.1 2.5-2.5S17.9 9 16.5 9h-4c-1.1 0-2-.9-2-2s.9-2 2-2h4c2.5 0 4.5-2 4.5-4.5S19 0 16.5 0h-4z" fill="#4285F4" />
+    <Path d="M12.5 14c2.5 0 4.5-2 4.5-4.5H12.5v4.5z" fill="#34A853" />
+    <Path d="M16.5 0c-2.5 0-4.5 2-4.5 4.5h4.5V0z" fill="#FBBC05" />
+    <Path d="M12.5 4.5C12.5 2 14.5 0 17 0h2c2.5 0 4.5 2 4.5 4.5S21.5 9 19 9h-2c-1.4 0-2.5 1.1-2.5 2.5s1.1 2.5 2.5 2.5h2c2.5 0 4.5 2 4.5 4.5S21.5 20 19 20h-2c-2.5 0-4.5-2-4.5-4.5V4.5z" fill="#EA4335" />
+  </Svg>
+);
+
+const PhonePeLogo = () => (
+  <Svg width={32} height={32} viewBox="0 0 32 32">
+    <Rect width={32} height={32} rx={8} fill="#5F259F" />
+    <Path d="M16 5.5a10.5 10.5 0 1010.5 10.5A10.5 10.5 0 0016 5.5zm1.5 14h-3.5v-2.5h1.2c1.2 0 2.2-1 2.2-2.2s-1-2.2-2.2-2.2H14V10h3.5c2.2 0 4 1.8 4 4s-1.8 4-4 4z" fill="#FFFFFF" />
+    <Circle cx="15.8" cy="14" r="1.5" fill="#EAB308" />
+  </Svg>
+);
+
+const PaytmLogo = () => (
+  <Svg width={46} height={15} viewBox="0 0 46 15" fill="none">
+    <Path d="M5.5 2h-4c-.8 0-1.5.7-1.5 1.5v8c0 .8.7 1.5 1.5 1.5h1.8V9h2.2c2 0 3.5-1.5 3.5-3.5S7.5 2 5.5 2zm-.2 4.5h-2v-2.2h2c.6 0 1 .4 1 1.1s-.4 1.1-1 1.1z" fill="#00baf2" />
+    <Path d="M14.5 5.5c-1 0-1.8.5-2.2 1.2V5.7h-2.2v7.3h2.2v-3.5c.3.5.9.8 1.5.8 1.5 0 2.8-1.2 2.8-3.8s-1.3-3.5-2.1-3.5zm-.2 5.2c-.8 0-1.3-.5-1.3-1.4s.5-1.4 1.3-1.4 1.3.5 1.3 1.4-.5 1.4-1.3 1.4z" fill="#00baf2" />
+    <Path d="M22.5 5.5c-1 0-1.8.5-2.2 1.2v-.8H18v7.3h2.2v-1c.4.5 1 .9 1.6.9 1.5 0 2.8-1.2 2.8-3.8s-1.3-3.4-2.1-3.4zm-.2 5.2c-.8 0-1.3-.5-1.3-1.4s.5-1.4 1.3-1.4 1.3.5 1.3 1.4-.5 1.4-1.3 1.4z" fill="#00baf2" />
+    <Path d="M28.5.5h-2.5L24.5 5 23 .5H20.5l3.2 6.5v6.2h2.2V7L28.5.5z" fill="#002e6e" />
+    <Path d="M33.2 2v2.5H31v8.7h-2.2V4.5H27V2h6.2z" fill="#002e6e" />
+    <Path d="M42 2h-4c-.8 0-1.5.7-1.5 1.5v8.7h2.2V5.7c.4.8 1.2 1.3 2.2 1.3.8 0 1.5-.5 1.8-1.3v6.7h2.2V2H42z" fill="#002e6e" />
+  </Svg>
+);
+
+const AmazonPayLogo = () => (
+  <Svg width={48} height={18} viewBox="0 0 48 18" fill="none">
+    <Path d="M10 1.5c-1.8 0-3.3.7-4 1.2-.2.2-.2.4 0 .6l1 .7c.2.2.4.2.6 0 .3-.3 1.2-.8 2.4-.8 1.8 0 2.7.9 2.7 2.2v.4c-.9.1-2.3.2-3.5.6-2 .7-3.3 1.8-3.3 3.6 0 1.8 1.1 2.7 2.9 2.7 1.5 0 2.5-.6 3-1.2v1c0 .2.2.4.4.4h1.7c.2 0 .4-.2.4-.4V6.3c0-2.9-1.8-4.8-4.3-4.8zm1.9 7.3c0 1.1-.7 1.8-1.8 1.8-1 0-1.4-.6-1.4-1.4 0-1 .7-1.5 2.6-1.7.5 0 .6 0 .6.1v1.2z" fill="#FF9900" />
+    <Path d="M21.2 1.5c-2.5 0-4.4 1.9-4.4 4.4s1.9 4.4 4.4 4.4 4.4-1.9 4.4-4.4-1.9-4.4-4.4-4.4zm0 6.9c-1.4 0-2.3-1-2.3-2.5s.9-2.5 2.3-2.5 2.3 1 2.3 2.5-.9 2.5-2.3 2.5zm9.4-6.9l-2.6 4.3-2.6-4.3h-2.3L28 7.3v3.7h2.3V7.3l4.8-5.8h-2.3z" fill="#111" />
+    <Path d="M5 14.5c5 2.5 15 2.5 20 0 .5-.2.8.2.4.5-3 2.5-12 3.5-20.8 0-.4-.2-.2-.7.4-.5z" fill="#FF9900" />
+    <Path d="M25 13c-.3-.2-.5 0-.5.2l.2 1.5c0 .2.2.3.3.1l1-1c.2-.2.1-.5-.2-.5z" fill="#FF9900" />
+  </Svg>
+);
+
+const CardPreview: React.FC<{
+  number: string;
+  expiry: string;
+  name: string;
+  planColor: string;
+}> = ({ number, expiry, name, planColor }) => {
+  const displayNo = number || '•••• •••• •••• ••••';
+  const displayExpiry = expiry || 'MM/YY';
+  const displayName = name.toUpperCase() || 'CARDHOLDER NAME';
+
+  return (
+    <LinearGradient
+      colors={[planColor, '#1E293B']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.creditCardPreview}
+    >
+      <View style={styles.cardPreviewHeader}>
+        <Ionicons name="wifi-sharp" size={20} color="#FFF" style={styles.cardChip} />
+        <Text style={styles.cardPreviewBrand}>SECURE PAY</Text>
+      </View>
+
+      <Text style={styles.cardPreviewNumber}>{displayNo}</Text>
+
+      <View style={styles.cardPreviewFooter}>
+        <View>
+          <Text style={styles.cardPreviewLabel}>CARD HOLDER</Text>
+          <Text style={styles.cardPreviewName}>{displayName}</Text>
+        </View>
+        <View style={{ alignItems: 'flex-end' }}>
+          <Text style={styles.cardPreviewLabel}>EXPIRES</Text>
+          <Text style={styles.cardPreviewExpiry}>{displayExpiry}</Text>
+        </View>
+      </View>
+    </LinearGradient>
+  );
+};
 
 const generateMockId = (prefix: string, length = 10): string => {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
@@ -56,13 +134,12 @@ export const SubscriptionScreen: React.FC = () => {
   const [successMode, setSuccessMode] = useState(false);
   const [purchasedPlan, setPurchasedPlan] = useState('');
 
-  // Payment Gateway Simulator & Real API States
+  // Payment Gateway & Real API States
   const [checkoutVisible, setCheckoutVisible] = useState(false);
   const [checkoutPlan, setCheckoutPlan] = useState<'pro_lifetime' | 'auto_lifetime' | null>(null);
   const [checkoutStep, setCheckoutStep] = useState<'methods' | 'upi_details' | 'card_details' | 'otp_verify' | 'processing' | 'awaiting_real_verify'>('methods');
   const [checkoutMethod, setCheckoutMethod] = useState<'upi' | 'card' | 'netbanking' | 'wallet' | null>(null);
   const [upiProvider, setUpiProvider] = useState<'gpay' | 'phonepe' | 'paytm' | 'amazonpay' | null>(null);
-  const [paymentMode, setPaymentMode] = useState<'real' | 'mock'>('real');
   const [verifyingRealOrder, setVerifyingRealOrder] = useState<string | null>(null);
 
   // Form Inputs
@@ -82,37 +159,6 @@ export const SubscriptionScreen: React.FC = () => {
     }
   };
 
-  const executeSimulatedCheckout = async () => {
-    if (!checkoutPlan) return;
-    setCheckoutStep('processing');
-    
-    try {
-      // Small simulated bank network latency
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      const mockOrderId = generateMockId('order_mock', 14);
-      const verifyRes = await verifySubscriptionPayment({
-        razorpay_order_id: mockOrderId,
-        razorpay_payment_id: generateMockId('pay_sandbox', 10),
-        plan_code: checkoutPlan,
-      });
-
-      if (verifyRes.error || !verifyRes.data) {
-        throw new Error(verifyRes.error || 'Signature verification failed');
-      }
-
-      setCheckoutVisible(false);
-      setPurchasedPlan(checkoutPlan === 'pro_lifetime' ? 'Orbit Pro Lifetime' : 'Orbit Auto Lifetime');
-      setSuccessMode(true);
-      triggerHaptic(Haptics.NotificationFeedbackType.Success);
-      await refreshEntitlements();
-    } catch (err: any) {
-      triggerHaptic(Haptics.NotificationFeedbackType.Error);
-      Alert.alert('Payment Failed', err.message || 'Could not complete subscription');
-      setCheckoutStep('methods');
-    }
-  };
-
   const executeRealCheckout = async () => {
     if (!checkoutPlan) return;
     setCheckoutStep('processing');
@@ -127,7 +173,8 @@ export const SubscriptionScreen: React.FC = () => {
       const orderData = orderRes.data;
 
       // 2. Open real Razorpay Hosted checkout overlay using expo-web-browser
-      const keyId = 'rzp_test_StB1uQufz9lqdT';
+      // Dynamically resolves key_id from server order payload to support dev/prod environments
+      const keyId = (orderData as any).key_id ?? 'rzp_test_StB1uQufz9lqdT';
       const checkoutUrl = `https://api.razorpay.com/v1/checkout/hosted?order_id=${orderData.id}&key_id=${keyId}`;
       
       setVerifyingRealOrder(orderData.id);
@@ -183,11 +230,7 @@ export const SubscriptionScreen: React.FC = () => {
   };
 
   const executePaymentFlow = async () => {
-    if (paymentMode === 'real') {
-      await executeRealCheckout();
-    } else {
-      await executeSimulatedCheckout();
-    }
+    await executeRealCheckout();
   };
 
   const autofillTestCard = () => {
@@ -239,36 +282,6 @@ export const SubscriptionScreen: React.FC = () => {
             <View style={styles.zomatoSecureBadge}>
               <Ionicons name="lock-closed" size={10} color="#64748B" />
               <Text style={styles.zomatoSecureTextSmall}>RAZORPAY</Text>
-            </View>
-          </View>
-
-          {/* Interactive Environment Mode Toggle Switch */}
-          <View style={styles.zomatoToggleCard}>
-            <View style={styles.zomatoToggleLabelCol}>
-              <Text style={styles.zomatoToggleLabelTitle}>Gateway Testing Mode</Text>
-              <Text style={styles.zomatoToggleLabelDesc}>
-                {paymentMode === 'real' ? 'Using Real Razorpay Test Credentials' : 'Using Local Developer Offline Sandbox'}
-              </Text>
-            </View>
-            <View style={styles.zomatoToggleContainer}>
-              <TouchableOpacity 
-                style={[styles.zomatoToggleBtn, paymentMode === 'real' && styles.zomatoToggleBtnActive]} 
-                onPress={() => {
-                  setPaymentMode('real');
-                  triggerHaptic(Haptics.NotificationFeedbackType.Success);
-                }}
-              >
-                <Text style={[styles.zomatoToggleText, paymentMode === 'real' && styles.zomatoToggleTextActive]}>🚀 Real API</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.zomatoToggleBtn, paymentMode === 'mock' && styles.zomatoToggleBtnActive]} 
-                onPress={() => {
-                  setPaymentMode('mock');
-                  triggerHaptic(Haptics.NotificationFeedbackType.Success);
-                }}
-              >
-                <Text style={[styles.zomatoToggleText, paymentMode === 'mock' && styles.zomatoToggleTextActive]}>🧪 Sandbox</Text>
-              </TouchableOpacity>
             </View>
           </View>
 
@@ -340,57 +353,93 @@ export const SubscriptionScreen: React.FC = () => {
 
             {checkoutStep !== 'awaiting_real_verify' && checkoutStep !== 'processing' && (
               <>
-                {/* 1. UPI Grid */}
+                {/* 1. UPI Section */}
                 <View style={styles.zomatoSection}>
                   <Text style={styles.zomatoSectionTitle}>UPI Instant Payments</Text>
                   
-                  <View style={styles.zomatoUpiGrid}>
+                  <View style={styles.upiAppList}>
                     {/* GPay */}
-                    <TouchableOpacity style={styles.zomatoUpiItem} onPress={() => {
-                      setCheckoutMethod('upi');
-                      setUpiProvider('gpay');
-                      void executePaymentFlow();
-                    }}>
-                      <View style={[styles.zomatoUpiIconBg, { backgroundColor: '#E8F0FE' }]}>
-                        <Ionicons name="logo-google" size={24} color="#4285F4" />
+                    <TouchableOpacity 
+                      style={[styles.upiAppRow, upiProvider === 'gpay' && styles.upiAppRowActive]} 
+                      onPress={() => {
+                        setCheckoutMethod('upi');
+                        setUpiProvider('gpay');
+                        void executePaymentFlow();
+                      }}
+                    >
+                      <View style={styles.upiLogoContainer}>
+                        <GPayLogo />
                       </View>
-                      <Text style={styles.zomatoUpiLabel}>Google Pay</Text>
+                      <View style={styles.upiAppDetails}>
+                        <Text style={styles.upiAppName}>Google Pay</Text>
+                        <Text style={styles.upiAppSub}>Pay instantly via Google Pay UPI</Text>
+                      </View>
+                      <View style={styles.upiAppAction}>
+                        <Ionicons name="chevron-forward-sharp" size={16} color="#94A3B8" />
+                      </View>
                     </TouchableOpacity>
 
                     {/* PhonePe */}
-                    <TouchableOpacity style={styles.zomatoUpiItem} onPress={() => {
-                      setCheckoutMethod('upi');
-                      setUpiProvider('phonepe');
-                      void executePaymentFlow();
-                    }}>
-                      <View style={[styles.zomatoUpiIconBg, { backgroundColor: '#F3E8FF' }]}>
-                        <Ionicons name="flash" size={24} color="#7C3AED" />
+                    <TouchableOpacity 
+                      style={[styles.upiAppRow, upiProvider === 'phonepe' && styles.upiAppRowActive]} 
+                      onPress={() => {
+                        setCheckoutMethod('upi');
+                        setUpiProvider('phonepe');
+                        void executePaymentFlow();
+                      }}
+                    >
+                      <View style={styles.upiLogoContainer}>
+                        <PhonePeLogo />
                       </View>
-                      <Text style={styles.zomatoUpiLabel}>PhonePe</Text>
+                      <View style={styles.upiAppDetails}>
+                        <Text style={styles.upiAppName}>PhonePe</Text>
+                        <Text style={styles.upiAppSub}>Fastest payment via PhonePe app</Text>
+                      </View>
+                      <View style={styles.upiAppAction}>
+                        <Ionicons name="chevron-forward-sharp" size={16} color="#94A3B8" />
+                      </View>
                     </TouchableOpacity>
 
                     {/* Paytm */}
-                    <TouchableOpacity style={styles.zomatoUpiItem} onPress={() => {
-                      setCheckoutMethod('upi');
-                      setUpiProvider('paytm');
-                      void executePaymentFlow();
-                    }}>
-                      <View style={[styles.zomatoUpiIconBg, { backgroundColor: '#E0F2FE' }]}>
-                        <Ionicons name="wallet-sharp" size={24} color="#00B9F5" />
+                    <TouchableOpacity 
+                      style={[styles.upiAppRow, upiProvider === 'paytm' && styles.upiAppRowActive]} 
+                      onPress={() => {
+                        setCheckoutMethod('upi');
+                        setUpiProvider('paytm');
+                        void executePaymentFlow();
+                      }}
+                    >
+                      <View style={styles.upiLogoContainer}>
+                        <PaytmLogo />
                       </View>
-                      <Text style={styles.zomatoUpiLabel}>Paytm UPI</Text>
+                      <View style={styles.upiAppDetails}>
+                        <Text style={styles.upiAppName}>Paytm</Text>
+                        <Text style={styles.upiAppSub}>Pay using Paytm Wallet or UPI</Text>
+                      </View>
+                      <View style={styles.upiAppAction}>
+                        <Ionicons name="chevron-forward-sharp" size={16} color="#94A3B8" />
+                      </View>
                     </TouchableOpacity>
 
                     {/* Amazon Pay */}
-                    <TouchableOpacity style={styles.zomatoUpiItem} onPress={() => {
-                      setCheckoutMethod('upi');
-                      setUpiProvider('amazonpay');
-                      void executePaymentFlow();
-                    }}>
-                      <View style={[styles.zomatoUpiIconBg, { backgroundColor: '#FFFBEB' }]}>
-                        <Ionicons name="logo-amazon" size={24} color="#FF9900" />
+                    <TouchableOpacity 
+                      style={[styles.upiAppRow, upiProvider === 'amazonpay' && styles.upiAppRowActive]} 
+                      onPress={() => {
+                        setCheckoutMethod('upi');
+                        setUpiProvider('amazonpay');
+                        void executePaymentFlow();
+                      }}
+                    >
+                      <View style={styles.upiLogoContainer}>
+                        <AmazonPayLogo />
                       </View>
-                      <Text style={styles.zomatoUpiLabel}>Amazon Pay</Text>
+                      <View style={styles.upiAppDetails}>
+                        <Text style={styles.upiAppName}>Amazon Pay</Text>
+                        <Text style={styles.upiAppSub}>Quick checkout using Amazon account</Text>
+                      </View>
+                      <View style={styles.upiAppAction}>
+                        <Ionicons name="chevron-forward-sharp" size={16} color="#94A3B8" />
+                      </View>
                     </TouchableOpacity>
                   </View>
 
@@ -408,12 +457,12 @@ export const SubscriptionScreen: React.FC = () => {
                       />
                       {customUpiId.length > 0 && (
                         <TouchableOpacity 
-                          style={[styles.zomatoInputPayBtn, { backgroundColor: accentColor }]}
-                          onPress={() => {
-                            setCheckoutMethod('upi');
-                            setUpiProvider(null);
-                            void executePaymentFlow();
-                          }}
+                           style={[styles.zomatoInputPayBtn, { backgroundColor: accentColor }]}
+                           onPress={() => {
+                             setCheckoutMethod('upi');
+                             setUpiProvider(null);
+                             void executePaymentFlow();
+                           }}
                         >
                           <Ionicons name="arrow-forward" size={16} color="#FFF" />
                         </TouchableOpacity>
@@ -433,6 +482,13 @@ export const SubscriptionScreen: React.FC = () => {
                   </View>
 
                   <View style={styles.visualCardForm}>
+                    <CardPreview
+                      number={cardNumber}
+                      expiry={cardExpiry}
+                      name={cardName}
+                      planColor={accentColor}
+                    />
+
                     <View style={styles.zomatoInputGroup}>
                       <Text style={styles.zomatoInputLabel}>CARD NUMBER</Text>
                       <View style={styles.zomatoInputWrapper}>
@@ -653,7 +709,7 @@ export const SubscriptionScreen: React.FC = () => {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Subscription</Text>
         <TouchableOpacity style={styles.avatarContainer}>
-          <Ionicons name="ribbon" size={24} color={theme.colors.primary} />
+          <Ionicons name="diamond" size={24} color={theme.colors.primary} />
         </TouchableOpacity>
       </View>
 
@@ -1277,36 +1333,115 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: 12,
   },
-  zomatoUpiGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
+  upiAppList: {
+    gap: 12,
     marginBottom: 16,
   },
-  zomatoUpiItem: {
-    flex: 1,
+  upiAppRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-  },
-  zomatoUpiIconBg: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
+    padding: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
     borderColor: '#E2E8F0',
-    shadowColor: '#000',
+    borderRadius: 14,
+    shadowColor: '#0F172A',
     shadowOpacity: 0.02,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
     elevation: 1,
   },
-  zomatoUpiLabel: {
-    fontSize: 10,
+  upiAppRowActive: {
+    borderColor: '#5B4DFF',
+    backgroundColor: 'rgba(91, 77, 255, 0.02)',
+  },
+  upiLogoContainer: {
+    width: 60,
+    height: 38,
+    borderRadius: 8,
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  upiAppDetails: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  upiAppName: {
+    fontSize: 13,
     fontWeight: '700',
-    color: '#475569',
-    textAlign: 'center',
+    color: '#1E293B',
+  },
+  upiAppSub: {
+    fontSize: 10,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  upiAppAction: {
+    padding: 4,
+  },
+  creditCardPreview: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 18,
+    height: 155,
+    justifyContent: 'space-between',
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3,
+  },
+  cardPreviewHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  cardChip: {
+    transform: [{ rotate: '90deg' }],
+  },
+  cardPreviewBrand: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#FFF',
+    letterSpacing: 1.2,
+    opacity: 0.85,
+  },
+  cardPreviewNumber: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#FFF',
+    letterSpacing: 2.2,
+    marginVertical: 8,
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+  },
+  cardPreviewFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+  },
+  cardPreviewLabel: {
+    fontSize: 7,
+    fontWeight: '700',
+    color: '#E2E8F0',
+    letterSpacing: 0.6,
+    marginBottom: 2,
+    opacity: 0.75,
+  },
+  cardPreviewName: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFF',
+    letterSpacing: 0.8,
+  },
+  cardPreviewExpiry: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFF',
+    letterSpacing: 0.8,
   },
   zomatoInputGroup: {
     marginBottom: 12,

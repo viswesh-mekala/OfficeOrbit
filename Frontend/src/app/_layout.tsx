@@ -6,18 +6,26 @@ import { View, ActivityIndicator, StyleSheet, BackHandler, Platform, AppState } 
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { AuthProvider, useAuth } from '../store/AuthContext';
+import useEntitlements from '../hooks/useEntitlements';
 import { theme } from '../theme/theme';
 import { TransitionOverlay } from '../components/common/TransitionOverlay';
 import { ToastProvider } from '../components/common/Toast';
 import { AppDialog } from '../components/common/AppDialog';
 import '../services/BackgroundTasks';
-import { registerGeofence, stopGeofence, unregisterLegacyTasks } from '../services/LocationService';
+import {
+  registerGeofence,
+  stopGeofence,
+  unregisterLegacyTasks,
+  startLiveProcessWatcher,
+  stopLiveProcessWatcher,
+} from '../services/LocationService';
 import {
   attachNotificationNavigation,
   configureNotificationChannels,
   requestNotificationPermissions,
 } from '../services/NotificationService';
 import { flushOfflineQueue } from '../services/AttendanceService';
+import { handleGeofenceEnter, handleGeofenceExit } from '../services/AttendanceAutomation';
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({});
@@ -49,6 +57,7 @@ export default function RootLayout() {
 // Auth-gated navigation — production-grade like Flipkart/Amazon
 function RootLayoutNav() {
   const { session, loading, profileLoading, isProfileComplete, profile } = useAuth();
+  const { capabilities } = useEntitlements();
   const segments = useSegments();
   const hasNavigated = useRef(false);
   const prevSessionRef = useRef<typeof session>(undefined as any);
@@ -66,30 +75,48 @@ function RootLayoutNav() {
   }, []);
 
 
-  // Register OS-native geofence when user is logged in with a complete profile
+  // Synchronize location tracking (Auto -> OS Geofencing; Free/Pro -> JS Process Watcher)
   useEffect(() => {
     let cancelled = false;
 
-    const tryRegisterGeofence = async () => {
+    const syncTrackingService = async () => {
       if (!session || !isProfileComplete || !profile?.company_location) return;
 
       const { latitude, longitude } = profile.company_location;
       const coordKey = `${latitude},${longitude}`;
 
-      if (geofenceRegisteredRef.current === coordKey) return;
+      if (capabilities.background_automation_level === 'expo_background') {
+        // ── Auto Tier: Start native persistent geofencing, turn off JS watcher ──
+        stopLiveProcessWatcher();
 
-      const registered = await registerGeofence(latitude, longitude);
-      if (!cancelled && registered) {
-        geofenceRegisteredRef.current = coordKey;
+        if (geofenceRegisteredRef.current === coordKey) return;
+
+        const registered = await registerGeofence(latitude, longitude);
+        if (!cancelled && registered) {
+          geofenceRegisteredRef.current = coordKey;
+        }
+      } else {
+        // ── Free / Pro Tiers: Start JS process watcher, turn off native geofencing ──
+        geofenceRegisteredRef.current = null;
+        await stopGeofence();
+
+        if (!cancelled) {
+          await startLiveProcessWatcher(
+            latitude,
+            longitude,
+            () => handleGeofenceEnter(),
+            () => handleGeofenceExit()
+          );
+        }
       }
     };
 
     if (session && isProfileComplete && profile?.company_location) {
-      void tryRegisterGeofence();
+      void syncTrackingService();
 
       const subscription = AppState.addEventListener('change', (nextState) => {
         if (nextState === 'active') {
-          void tryRegisterGeofence();
+          void syncTrackingService();
           void flushOfflineQueue();
         }
       });
@@ -103,20 +130,24 @@ function RootLayoutNav() {
       return () => {
         cancelled = true;
         subscription.remove();
+        stopLiveProcessWatcher();
       };
     } else {
       geofenceRegisteredRef.current = null;
       void stopGeofence();
+      stopLiveProcessWatcher();
     }
 
     return () => {
       cancelled = true;
+      stopLiveProcessWatcher();
     };
   }, [
     session,
     isProfileComplete,
     profile?.company_location?.latitude,
     profile?.company_location?.longitude,
+    capabilities.background_automation_level,
   ]);
 
 

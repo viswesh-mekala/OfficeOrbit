@@ -89,7 +89,7 @@ const STATUS_THEME: Record<
   { fill: string; text: string; label: string }
 > = {
   present: { fill: '#66ff66', text: '#0F172A', label: 'Office' },
-  wfh: { fill: '#ff4d4d', text: '#FFFFFF', label: 'Home' },
+  wfh: { fill: '#ff4d4d', text: '#FFFFFF', label: 'WFH' },
   leave: { fill: '#ffb84d', text: '#0F172A', label: 'Leave' },
   holiday: { fill: '#ff9900', text: '#0F172A', label: 'Holiday' },
   absent: { fill: '#9CA3AF', text: '#FFFFFF', label: 'Absent' },
@@ -623,7 +623,7 @@ export const Attendance: React.FC = () => {
                     { backgroundColor: STATUS_THEME.wfh.fill },
                   ]}
                 />
-                <Text style={styles.modalOptionText}>Home</Text>
+                <Text style={styles.modalOptionText}>WFH</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.modalOption}

@@ -2,7 +2,7 @@ import React from 'react';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 import { Onboarding } from '../../../src/screens/onboarding/OnboardingScreen';
 import * as Location from 'expo-location';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
@@ -106,8 +106,8 @@ describe('OnboardingScreen Permissions Step Unit Tests', () => {
     expect(getByText('Device Configuration')).toBeTruthy();
     expect(getByText('Setup Required')).toBeTruthy();
     
-    // Verify dynamic button label is "Authorize Location Access"
-    expect(getAllByText('Authorize Location Access').length).toBeGreaterThan(0);
+    // Verify dynamic button label is "Configure Location Access"
+    expect(getAllByText('Configure Location Access').length).toBeGreaterThan(0);
 
     // Mock permissions turning into granted
     (Location.getForegroundPermissionsAsync as jest.Mock).mockResolvedValueOnce({ status: 'granted' });
@@ -115,7 +115,7 @@ describe('OnboardingScreen Permissions Step Unit Tests', () => {
 
     // Call validation/refresh
     // Find the one that is actually the button (the last element with this text)
-    const authButtons = getAllByText('Authorize Location Access');
+    const authButtons = getAllByText('Configure Location Access');
     fireEvent.press(authButtons[authButtons.length - 1]);
     await act(async () => {});
 
@@ -123,5 +123,112 @@ describe('OnboardingScreen Permissions Step Unit Tests', () => {
     await waitFor(() => {
       expect(Location.requestForegroundPermissionsAsync).toHaveBeenCalled();
     });
+  });
+
+  // Reusable helper to navigate from Welcome to the Permissions Step
+  const navigatePermissionsStep = async (getByText: any, getByPlaceholderText: any) => {
+    // Step 0 -> Step 1 (Personal Info)
+    fireEvent.press(getByText("Let's Get Started"));
+    await act(async () => {});
+
+    // Fill personal info and press Continue
+    const nameInput = getByPlaceholderText('e.g. Viswesh Mekala');
+    fireEvent.changeText(nameInput, 'Viswesh Mekala');
+    fireEvent.press(getByText('Continue'));
+    await act(async () => {});
+
+    // Step 2 (Workplace)
+    const companyInput = getByPlaceholderText('e.g. Google, Infosys');
+    fireEvent.changeText(companyInput, 'MNC Google');
+    
+    // Select location fallback from mock suggestions
+    const locationInput = getByPlaceholderText('Search office address or company campus...');
+    fireEvent.changeText(locationInput, 'Google Campus');
+    await act(async () => {});
+
+    // Wait for the suggestion to appear and select it
+    await waitFor(() => expect(getByText('Mock Office')).toBeTruthy());
+    fireEvent.press(getByText('Mock Office'));
+    await act(async () => {});
+
+    // Mock searchSuggestions results
+    await waitFor(() => expect(getByText('Office pinned')).toBeTruthy());
+    fireEvent.press(getByText('Continue'));
+    await act(async () => {});
+
+    // Step 3 (Schedule)
+    fireEvent.press(getByText('Continue'));
+    await act(async () => {});
+  };
+
+  test('3. Onboarding blocks submission and alerts when battery optimization is restricted on Android', async () => {
+    const originalOS = Platform.OS;
+    Platform.OS = 'android';
+
+    const { getByText, getByPlaceholderText, getAllByText } = render(<Onboarding />);
+    await act(async () => {});
+
+    // Mock Location permissions fully granted
+    (Location.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'granted' });
+    (Location.getBackgroundPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'granted' });
+
+    // Navigate to Permissions step
+    await navigatePermissionsStep(getByText, getByPlaceholderText);
+
+    expect(getByText('Device Configuration')).toBeTruthy();
+
+    // With Platform.OS = 'android' and Location fully granted, the button label is "Configure Battery Restrictions"
+    // Since battery optimization is NOT disabled yet, clicking should show Alert.alert
+    const actionButtons = getAllByText('Configure Battery Restrictions');
+    fireEvent.press(actionButtons[actionButtons.length - 1]);
+    await act(async () => {});
+
+    // Assert that battery restriction alert was displayed
+    expect(Alert.alert).toHaveBeenCalledWith(
+      'Battery Optimization Required',
+      expect.any(String),
+      expect.any(Array)
+    );
+
+    // Clean up
+    Platform.OS = originalOS;
+  });
+
+  test('4. Onboarding proceeds to handleSubmit when both location and battery optimization are granted', async () => {
+    const originalOS = Platform.OS;
+    Platform.OS = 'ios'; // iOS defaults to battery optimization disabled = true
+
+    const mockUpdateProfile = jest.fn(() => Promise.resolve({ error: null }));
+    const { useAuth } = require('../../../src/store/AuthContext');
+    useAuth.mockImplementation(() => ({
+      user: { id: '123', email: 'test@officeorbit.com' },
+      profile: {
+        username: '',
+        company: '',
+        company_location: null,
+      },
+      updateProfile: mockUpdateProfile,
+    }));
+
+    // Mock Location permissions fully granted
+    (Location.getForegroundPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'granted' });
+    (Location.getBackgroundPermissionsAsync as jest.Mock).mockResolvedValue({ status: 'granted' });
+
+    const { getByText, getByPlaceholderText, getAllByText } = render(<Onboarding />);
+    await act(async () => {});
+
+    // Navigate to Permissions step
+    await navigatePermissionsStep(getByText, getByPlaceholderText);
+
+    // On iOS with Location granted, the button label is "Launch into Orbit 🚀"
+    const actionButtons = getAllByText('Launch into Orbit 🚀');
+    fireEvent.press(actionButtons[actionButtons.length - 1]);
+    await act(async () => {});
+
+    // Verify it submits the profile successfully
+    expect(mockUpdateProfile).toHaveBeenCalled();
+
+    // Clean up
+    Platform.OS = originalOS;
   });
 });

@@ -1,8 +1,10 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import * as SecureStore from 'expo-secure-store';
 import { Alert, AppState, Linking, Platform } from 'react-native';
 import { addNotification } from './NotificationService';
 import { queueAttendanceRecovery } from './AttendanceRecoveryService';
+import { getDistanceFromLatLonInMeters } from '../utils/locationUtils';
 
 export const GEOFENCE_REGION_TASK = 'OFFICEORBIT_GEOFENCE_REGION';
 export const ACTIVE_POLLING_TASK  = 'OFFICEORBIT_ACTIVE_POLLING';
@@ -99,6 +101,16 @@ export const registerGeofence = async (
     if (!hasPermissions) return false;
 
     try {
+        // Cache coordinates locally in SecureStore so background tasks can read offline-first
+        try {
+            await SecureStore.setItemAsync('officeorbit_office_location_cache', JSON.stringify({
+                latitude  : officeLat,
+                longitude : officeLng,
+            }));
+        } catch (_err) {
+            // Ignore cache storage failure
+        }
+
         // Stop any stale geofence first
         const isRegistered = await TaskManager.isTaskRegisteredAsync(GEOFENCE_REGION_TASK);
         if (isRegistered) {
@@ -144,21 +156,25 @@ export const stopGeofence = async (): Promise<void> => {
  */
 export const startActivePolling = async (): Promise<void> => {
     try {
-        const isRegistered = await TaskManager.isTaskRegisteredAsync(ACTIVE_POLLING_TASK);
-        if (isRegistered) return;
-
-        await Location.startLocationUpdatesAsync(ACTIVE_POLLING_TASK, {
+        const options: Location.LocationOptions = {
             accuracy              : Location.Accuracy.Balanced,
             distanceInterval      : 0,
             timeInterval          : 60 * 1000,
             deferredUpdatesInterval: 3 * 60 * 1000,   // sample every 3 min
             deferredUpdatesDistance: 0,
             pausesUpdatesAutomatically: false,
-            foregroundService: {
+        };
+
+        // Only append foregroundService if AppState is active (foregrounded)
+        // This avoids ForegroundServiceStartNotAllowedException on Android 11+ in background launches
+        if (AppState.currentState === 'active') {
+            options.foregroundService = {
                 notificationTitle: 'OfficeOrbit',
                 notificationBody : 'Verifying attendance...',
-            },
-        });
+            };
+        }
+
+        await Location.startLocationUpdatesAsync(ACTIVE_POLLING_TASK, options);
     } catch (error) {
         console.error('[LocationService] Failed to start active polling:', error);
     }
@@ -174,3 +190,81 @@ export const stopActivePolling = async (): Promise<void> => {
         console.error('[LocationService] Failed to stop active polling:', error);
     }
 };
+
+// ── JS-Thread Location Watcher (Free / Pro Alive State Tracking) ─────────────
+
+let activeLocationWatcher: Location.LocationSubscription | null = null;
+let wasInsideOffice = false;
+
+/**
+ * Starts a Javascript-thread-bound location subscription.
+ * Runs only while the app is alive or minimized in background RAM.
+ * Stops automatically when the app is swipe-closed (process is killed).
+ */
+export const startLiveProcessWatcher = async (
+    officeLat: number,
+    officeLng: number,
+    onEnter: () => void | Promise<void>,
+    onExit: () => void | Promise<void>,
+): Promise<void> => {
+    if (activeLocationWatcher) return;
+
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+        console.warn('[LocationService] Live watcher skipped: Foreground permission denied');
+        return;
+    }
+
+    try {
+        // Sample initial position to set baseline state
+        const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const initialDistance = getDistanceFromLatLonInMeters(
+            current.coords.latitude,
+            current.coords.longitude,
+            officeLat,
+            officeLng
+        );
+        wasInsideOffice = initialDistance <= 500;
+    } catch (err) {
+        wasInsideOffice = false;
+    }
+
+    activeLocationWatcher = await Location.watchPositionAsync(
+        {
+            accuracy: Location.Accuracy.Balanced,
+            timeInterval: 60 * 1000, // check every minute
+            distanceInterval: 100,    // check every 100 meters
+        },
+        async (location) => {
+            const distance = getDistanceFromLatLonInMeters(
+                location.coords.latitude,
+                location.coords.longitude,
+                officeLat,
+                officeLng
+            );
+
+            const isInsideNow = distance <= 500;
+
+            if (isInsideNow && !wasInsideOffice) {
+                wasInsideOffice = true;
+                await onEnter();
+            } else if (!isInsideNow && wasInsideOffice) {
+                wasInsideOffice = false;
+                await onExit();
+            }
+        }
+    );
+    console.log('[LocationService] Live process location watcher started successfully');
+};
+
+/**
+ * Cleanly stops and releases the active location watcher subscription.
+ */
+export const stopLiveProcessWatcher = (): void => {
+    if (activeLocationWatcher) {
+        activeLocationWatcher.remove();
+        activeLocationWatcher = null;
+        console.log('[LocationService] Live process location watcher stopped successfully');
+    }
+};
+
