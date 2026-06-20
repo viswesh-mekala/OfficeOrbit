@@ -37,7 +37,7 @@ const GEOFENCE_RADIUS_M          = 500;   // Must match LocationService registra
 const DWELL_CONFIRM_DELAY_MS     = 5 * 60 * 1000;   // 5 min dwell before check-in
 const DWELL_RECOVERY_TIMEOUT_MS  = 30 * 60 * 1000;  // after this, ask the user to recover manually
 const EXIT_CONFIRM_SAMPLES_NEEDED = 2;               // both samples must be outside
-const EXIT_POLLING_TIMEOUT_MS    = 15 * 60 * 1000;  // give up after 15 min
+const EXIT_POLLING_TIMEOUT_MS    = 10 * 60 * 1000;  // stop after 10 min (reduced from 15 to limit notification duration)
 const FAR_DISTANCE_M             = 1500;             // fast exit if very far
 
 // ── Persisted State ───────────────────────────────────────────────────────────
@@ -73,6 +73,10 @@ const saveState = async (state: AutomationState): Promise<void> => {
 };
 
 const clearState = async (): Promise<void> => saveState({ ...DEFAULT_STATE });
+
+/** Public: wipe all background automation state from SecureStore. Call this after a manual checkout. */
+export const clearAutomationState = clearState;
+
 
 // ── Profile / Day helpers ─────────────────────────────────────────────────────
 
@@ -140,8 +144,23 @@ export async function handleGeofenceEnter(): Promise<void> {
     const state = await loadState();
     const nowMs = Date.now();
 
-    // Already have a pending enter — ignore duplicate ENTER events (GPS flicker)
-    if (state.pendingEnterAt) return;
+    // Guard: already have a pending enter — but only ignore it if it's RECENT.
+    // If pendingEnterAt is older than DWELL_RECOVERY_TIMEOUT_MS, the previous
+    // polling task failed silently (e.g. ForegroundServiceStartNotAllowedException on
+    // Android 11+ in killed-app context). A stale pendingEnterAt would cause EVERY
+    // subsequent geofence enter to be silently ignored forever.
+    if (state.pendingEnterAt) {
+        const staleDwellMs = nowMs - state.pendingEnterAt;
+        if (staleDwellMs < DWELL_RECOVERY_TIMEOUT_MS) {
+            // In-progress dwell or GPS flicker duplicate — don't interfere.
+            // The ACTIVE_POLLING_TASK will handle this within 30 min.
+            return;
+        }
+        // Older than 30 min — polling task crashed and never cleaned up.
+        // Clear and re-process as a fresh entry.
+        console.warn('[AttendanceAutomation] Stale pendingEnterAt detected (>30 min), clearing and reprocessing.');
+        await clearState();
+    }
 
     // Clear any stale exit state
     state.exitPollingStartMs  = null;
@@ -152,6 +171,13 @@ export async function handleGeofenceEnter(): Promise<void> {
     // Check today's record — if already manual-override, skip
     const { data: todayRecord } = await callApi<{ is_manual_override?: boolean }>('attendance-today');
     if ((todayRecord as any)?.is_manual_override) return;
+
+    // Use is_inside (open session) — NOT check_in — as the duplicate guard.
+    // check_in exists but is_inside=false → valid lunch return → open a new session.
+    // is_inside=true → open session already exists → genuine GPS flicker duplicate → skip.
+    const { data: sessionStatus } = await callApi<{ is_inside?: boolean }>('session-status');
+    if (sessionStatus?.is_inside) return;
+
 
     // Schedule dwell confirmation: take a GPS sample now.
     // If we're still inside after 5 min, confirm.
@@ -290,7 +316,7 @@ export async function handleGeofenceExit(): Promise<void> {
     const { data: todayRecord } = await callApi<any>('attendance-today');
     if (!todayRecord) return;                              // never checked in
     if ((todayRecord as any)?.is_manual_override) return;  // manual day — don't touch
-    if (todayRecord.check_out) return;                     // already fully checked out
+    if (todayRecord.check_out) return;                     // already fully checked out — nothing to do
 
     // Clear any pending enter (exit fires after enter — discard drive-by)
     const state = await loadState();
@@ -341,6 +367,16 @@ export async function handleActivePollingSample(
     if (!state.exitPollingStartMs) {
         // If we don't have an exit polling active, and we finished the dwell, we can stop polling.
         return finishedDwell || !state.pendingEnterAt;
+    }
+
+    // GUARD: Re-check DB — if user already checked out manually, stop immediately.
+    // This prevents exit polling from re-running performCheckout() every 3 min
+    // after a manual checkout until the 10-min timeout fires.
+    const { data: currentRecord } = await callApi<any>('attendance-today');
+    if (currentRecord?.check_out || !currentRecord) {
+        // Already checked out (manual or otherwise) — clean up and stop
+        await clearState();
+        return true;
     }
 
     // Timeout guard for Exit Polling

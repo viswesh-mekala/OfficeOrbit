@@ -1,7 +1,7 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as SecureStore from 'expo-secure-store';
-import { Alert, AppState, Linking, Platform } from 'react-native';
+import { Alert, Linking, Platform } from 'react-native';
 import { addNotification } from './NotificationService';
 import { queueAttendanceRecovery } from './AttendanceRecoveryService';
 import { getDistanceFromLatLonInMeters } from '../utils/locationUtils';
@@ -156,27 +156,29 @@ export const stopGeofence = async (): Promise<void> => {
  */
 export const startActivePolling = async (): Promise<void> => {
     try {
+        // IMPORTANT: foregroundService MUST always be set, regardless of AppState.
+        // When GEOFENCE_REGION_TASK fires with the app killed/backgrounded, AppState.currentState
+        // is NOT 'active'. Without foregroundService, Android 11+ throws
+        // ForegroundServiceStartNotAllowedException — which was previously swallowed silently
+        // by the catch block, causing the entire dwell-confirmation chain to never run.
         const options: Location.LocationOptions = {
-            accuracy              : Location.Accuracy.Balanced,
-            distanceInterval      : 0,
-            timeInterval          : 60 * 1000,
+            accuracy               : Location.Accuracy.Balanced,
+            distanceInterval       : 0,
+            timeInterval           : 60 * 1000,
             deferredUpdatesInterval: 3 * 60 * 1000,   // sample every 3 min
             deferredUpdatesDistance: 0,
             pausesUpdatesAutomatically: false,
+            foregroundService: {
+                notificationTitle: 'OfficeOrbit',
+                notificationBody : 'Verifying office attendance...',
+                notificationColor: '#5B4DFF',
+            },
         };
 
-        // Only append foregroundService if AppState is active (foregrounded)
-        // This avoids ForegroundServiceStartNotAllowedException on Android 11+ in background launches
-        if (AppState.currentState === 'active') {
-            options.foregroundService = {
-                notificationTitle: 'OfficeOrbit',
-                notificationBody : 'Verifying attendance...',
-            };
-        }
-
         await Location.startLocationUpdatesAsync(ACTIVE_POLLING_TASK, options);
-    } catch (error) {
-        console.error('[LocationService] Failed to start active polling:', error);
+    } catch (error: any) {
+        // Log the real error — don't swallow silently
+        console.error('[LocationService] Failed to start active polling:', error?.message ?? error);
     }
 };
 

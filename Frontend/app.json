@@ -55,7 +55,8 @@
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Allow OfficeOrbit to use your location.",
-          "isAndroidBackgroundLocationEnabled": true
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       "expo-notifications",

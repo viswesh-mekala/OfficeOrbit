@@ -170,9 +170,27 @@ export const useAttendance = () => {
                     }
                 },
             )
+            .on(
+                'postgres_changes',
+                {
+                    // attendance_sessions changes update sessions_count and check_out
+                    // on the daily record (via recompute_daily_summary on the backend).
+                    // Listen here so that when a lunch-return session opens or an
+                    // auto-checkout closes a session, todayLog re-syncs immediately.
+                    event : '*',
+                    schema: 'public',
+                    table : 'attendance_sessions',
+                    filter: `user_id=eq.${user.id}`,
+                },
+                () => {
+                    // Session changed → refresh to pick up new sessions_count / check_out
+                    fetchFresh();
+                },
+            )
             .subscribe();
 
         return () => { supabase.removeChannel(channel); };
+
     }, [user?.id, fetchFresh]);
 
     // ── 6. AppState foreground refresh ────────────────────────────────────────

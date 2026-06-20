@@ -48,6 +48,8 @@ import {
   queueAttendanceRecovery,
   queueAttendanceRecoveryFromError,
 } from '../../services/AttendanceRecoveryService';
+import { stopActivePolling } from '../../services/LocationService';
+import { clearAutomationState } from '../../services/AttendanceAutomation';
 import {
   isCalendarManagedDay,
   liveDurationMinutes,
@@ -332,6 +334,11 @@ export const Dashboard: React.FC = () => {
           showToast({ title: 'Check-out failed', message: error.message || 'Please try again.', variant: 'error' });
         } else {
           await clearRecovery('checkout');
+          // Stop the background exit-polling task immediately so the
+          // 'Verifying office attendance...' foreground notification dismisses
+          // right away instead of running until the 10-min timeout.
+          void stopActivePolling();
+          void clearAutomationState();
           refresh();
           const totalMin: number = (checkoutResult as any)?.total_minutes ?? (checkoutResult as any)?.duration_minutes ?? 0;
           const hrs = Math.floor(totalMin / 60);
